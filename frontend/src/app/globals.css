@@ -1,0 +1,124 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== LIGHT THEME (default, matches Stitch design) ===== */
+:root[data-theme="light"] {
+  --bg: #f8f9fa;
+  --bg2: #ffffff;
+  --bg3: #f3f4f5;
+  --bg-hover: #f9fafb;
+  --border: #e5e7eb;
+  --border2: #d9dadb;
+  --text: #191c1d;
+  --text2: #464554;
+  --text3: #767586;
+  --sidebar-bg: #1c1c28;
+  --sidebar-text: #9a9aa8;
+  --sidebar-text2: #6b6b7d;
+  --sidebar-hover: #26263a;
+  --shadow: 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+/* ===== DARK THEME (Deep Tech Minimalist) ===== */
+:root[data-theme="dark"] {
+  --bg: #0b1326;
+  --bg2: #131b2e;
+  --bg3: #171f33;
+  --bg-hover: #1a2236;
+  --border: #2d3449;
+  --border2: #222a3d;
+  --text: #dae2fd;
+  --text2: #b9c8de;
+  --text3: #908fa0;
+  --sidebar-bg: #060e20;
+  --sidebar-text: #908fa0;
+  --sidebar-text2: #6b7280;
+  --sidebar-hover: #131b2e;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+}
+
+:root {
+  --primary: #4648d4;
+  --primary-hover: #3a3cc0;
+  --primary2: #6063ee;
+  --primary-dim: rgba(70,72,212,0.1);
+  --primary-light: #c0c1ff;
+  --green: #16a34a;
+  --green-bg: rgba(22,163,74,0.12);
+  --orange: #b55d00;
+  --orange-bg: rgba(181,93,0,0.12);
+  --red: #ba1a1a;
+  --red-bg: rgba(186,26,26,0.1);
+  --yellow: #ca8a04;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: "Inter", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  transition: background 0.25s, color 0.25s;
+  -webkit-font-smoothing: antialiased;
+}
+
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  direction: ltr;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  -webkit-font-feature-settings: 'liga';
+  user-select: none;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.fade-in { animation: fadeIn 0.2s ease; }
+
+@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ===== MOBILE RESPONSIVE ===== */
+@media (max-width: 768px) {
+  body { font-size: 14px; }
+
+  /* Tables scroll horizontally */
+  .data-table { min-width: 600px; }
+
+  /* Kanban horizontal scroll already works, but adjust sizes */
+  .kanban-wrap { margin: 0 -16px; padding: 0 16px 16px; }
+
+  /* Profile page */
+  .profile-grid { grid-template-columns: 1fr !important; }
+
+  /* Login page centered */
+  .login-card { margin: 20px !important; width: auto !important; }
+
+  /* Dept views */
+  .pc-stats { grid-template-columns: repeat(3, 1fr) !important; }
+  .section-label { font-size: 11px; }
+}

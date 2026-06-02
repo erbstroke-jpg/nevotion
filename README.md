@@ -1,0 +1,191 @@
+# NevoDevs Workspace
+
+Внутренний инструмент команды NevoDevs — задачи (канбан), реестр ботов (Server List), команда с личными трекерами. Роли: **админ** (видит всё, двигает любые задачи) и **сотрудник** (двигает только свои).
+
+## Стек
+
+- **БД:** PostgreSQL 16 (self-hosted, в Docker volume — не зависит от внешних сервисов)
+- **Бэкенд:** FastAPI + SQLAlchemy 2.0 + JWT-авторизация
+- **Фронтенд:** Next.js 14 (App Router) + dnd-kit (drag & drop)
+- **Оркестрация:** Docker Compose (postgres + backend + frontend + nginx)
+
+---
+
+## Быстрый старт (production)
+
+Нужен только Docker и Docker Compose на сервере.
+
+```bash
+# 1. Создать .env из примера
+cp .env.example .env
+
+# 2. ОБЯЗАТЕЛЬНО сменить пароли и ключ в .env:
+#    - POSTGRES_PASSWORD
+#    - SECRET_KEY  (сгенерировать: openssl rand -hex 32)
+nano .env
+
+# 3. Поднять весь стек
+docker compose up -d --build
+
+# Готово. Приложение на http://<server-ip>/
+```
+
+При первом запуске бэкенд автоматически создаёт таблицы и заполняет демо-данными (команда + клиенты).
+
+### Вход
+
+| Пользователь | Email | Пароль | Роль |
+|---|---|---|---|
+| Бека | `beka@nevodevs.kg` | `admin123` | админ |
+| Ариет | `ariet@nevodevs.kg` | `staff123` | админ (Тимлид) |
+| Остальные | `<имя>@nevodevs.kg` | `staff123` | сотрудник |
+
+⚠️ **Смените пароли через интерфейс/БД перед реальным использованием.**
+
+---
+
+## Структура проекта
+
+```
+nevodevs/
+├── docker-compose.yml      # весь стек
+├── .env.example            # шаблон переменных окружения
+├── nginx/
+│   └── nginx.conf          # reverse proxy: / → frontend, /api → backend
+├── backend/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── app/
+│       ├── main.py         # точка входа FastAPI
+│       ├── seed.py         # начальные данные
+│       ├── core/           # config, database, security (JWT/bcrypt), deps
+│       ├── models/         # SQLAlchemy: User, Server, Task, Department
+│       ├── schemas/        # Pydantic-схемы
+│       └── routers/        # auth, users, servers, tasks, departments
+└── frontend/
+    ├── Dockerfile
+    ├── package.json
+    └── src/
+        ├── app/            # роуты: login, dashboard, servers, kanban, team, team/[id]
+        ├── components/     # Shell, KanbanBoard, Avatar
+        ├── context/        # AppContext (auth + тема)
+        └── lib/            # api-клиент, типы
+```
+
+---
+
+## Модель прав
+
+Логика в `backend/app/routers/tasks.py` → `_can_modify()`:
+
+- **admin** — может изменять/двигать/удалять любую задачу, создавать ботов и сотрудников, видит «Скрытую часть»
+- **staff** — двигает только задачи, где `owner_id == свой id`; чужие показываются с замком 🔒
+
+Должность (`position`: «Тимлид», «Руководитель», «Промпт-инженер», «Бэкенд») — это **отображаемая роль**, не уровень доступа. Доступ задаётся только полем `role` (admin/staff).
+
+---
+
+## Локальная разработка (без Docker)
+
+**Бэкенд:**
+```bash
+cd backend
+pip install -r requirements.txt
+# поднять postgres локально или через: docker run -e POSTGRES_PASSWORD=pass -p 5432:5432 postgres:16
+export POSTGRES_HOST=localhost POSTGRES_PASSWORD=pass
+python -m app.seed
+uvicorn app.main:app --reload
+```
+
+**Фронтенд:**
+```bash
+cd frontend
+npm install
+API_URL=http://localhost:8000 npm run dev
+# открыть http://localhost:3000
+```
+
+API-документация (Swagger): `http://localhost:8000/docs`
+
+---
+
+## Бэкапы БД
+
+Данные в Docker volume `pgdata`. Бэкап стандартным `pg_dump`:
+
+```bash
+docker compose exec db pg_dump -U nevodevs nevodevs > backup_$(date +%F).sql
+```
+
+Восстановление:
+```bash
+cat backup.sql | docker compose exec -T db psql -U nevodevs nevodevs
+```
+
+---
+
+## SSL (опционально)
+
+В `nginx/nginx.conf` добавить 443-server с сертификатами Let's Encrypt (через certbot или отдельный контейнер). Текущий конфиг — только HTTP на :80.
+
+---
+
+## API эндпоинты
+
+| Метод | Путь | Доступ |
+|---|---|---|
+| POST | `/api/auth/login` | все |
+| GET | `/api/auth/me` | авторизованные |
+| GET | `/api/users` | авторизованные |
+| POST/PATCH/DELETE | `/api/users` | admin |
+| GET | `/api/servers` | авторизованные (фильтры: status, platform, owner_id) |
+| POST/PATCH/DELETE | `/api/servers` | admin |
+| GET | `/api/tasks` | авторизованные (фильтр: owner_id для личного трекера) |
+| POST | `/api/tasks` | авторизованные |
+| PATCH | `/api/tasks/{id}/move` | владелец или admin |
+| GET | `/api/departments` | авторизованные (скрытые — только admin) |
+
+---
+
+## Статус тестирования
+
+- ✅ Бэкенд протестирован end-to-end (авторизация, права, подсчёты, фильтры)
+- ✅ Фронтенд собирается без ошибок (все роуты, standalone-сборка)
+- ⚠️ Полный прогон на реальном Postgres делается при первом `docker compose up` — код БД-агностичен (SQLAlchemy), миграция на Postgres прозрачна
+
+> Для боевых миграций схемы в будущем подключите Alembic (зависимость уже в `requirements.txt`). Сейчас таблицы создаются автоматически при старте.
+
+---
+
+## Alembic — управление миграциями
+
+Инициализация уже выполнена. Initial migration в `backend/migrations/versions/001_initial_schema.py`.
+
+**Применить миграции (вместо `create_all` на проде):**
+```bash
+cd backend
+POSTGRES_HOST=localhost POSTGRES_PASSWORD=... python3.12 -m alembic upgrade head
+```
+
+**Создать новую миграцию после изменения моделей:**
+```bash
+python3.12 -m alembic revision --autogenerate -m "describe_change"
+python3.12 -m alembic upgrade head
+```
+
+**Откатить последнюю миграцию:**
+```bash
+python3.12 -m alembic downgrade -1
+```
+
+## Безопасность перед проддом
+
+В `.env` обязательно поменять:
+```bash
+SECRET_KEY=$(openssl rand -hex 32)    # Генерация ключа
+POSTGRES_PASSWORD=strong_password_here
+ENVIRONMENT=production                 # Включает startup-checks
+FRONTEND_URL=https://your-domain.com  # CORS
+```
+
+При `ENVIRONMENT=production` приложение не запустится с дефолтным `SECRET_KEY`.
