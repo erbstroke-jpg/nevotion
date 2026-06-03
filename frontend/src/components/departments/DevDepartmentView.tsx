@@ -13,7 +13,7 @@ import {
 } from "@/lib/types";
 
 export function DevDepartmentView({ dept, departments }: { dept: Department; departments: Department[] }) {
-  const { isAdmin } = useApp();
+  const { isAdmin, user: currentUser } = useApp();
   const router = useRouter();
   const [users, setUsers] = useState<UserWithStats[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
@@ -99,11 +99,9 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
       {/* Server List */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 34, marginBottom: 14 }}>
         <SectionLabel style={{ margin: 0 }}>Server List (WhatsApp)</SectionLabel>
-        {isAdmin && (
-          <button className="btn btn-ghost" onClick={() => { setEditingServer(null); setServerModal(true); }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span> Добавить бота
-          </button>
-        )}
+        <button className="btn btn-ghost" onClick={() => { setEditingServer(null); setServerModal(true); }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span> Добавить бота
+        </button>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <div className={`chip ${prompterFilter === null ? "active" : ""}`} onClick={() => setPrompterFilter(null)}>Все ({servers.length})</div>
@@ -115,7 +113,7 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
       <div className="card" style={{ overflow: "hidden" }}><div style={{ overflowX: "auto" }}>
         <table className="data-table">
           <thead>
-            <tr><th>Компания</th><th>Статус</th><th>Дата подключения</th><th>Промптер</th>{isAdmin && <th></th>}</tr>
+            <tr><th>Компания</th><th>Статус</th><th>Дата подключения</th><th>Промптер</th><th></th></tr>
           </thead>
           <tbody>
             {filteredServers.map((s) => (
@@ -128,15 +126,17 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
                     <Avatar name={s.owner.name} color={s.owner.avatar_color} size={22} /> {s.owner.name}
                   </span>) : <span style={{ color: "var(--text3)" }}>—</span>}
                 </td>
-                {isAdmin && (
+                {(isAdmin || s.owner_id === currentUser?.id) && (
                   <td style={{ width: 70 }}>
                     <div style={{ display: "flex", gap: 4 }}>
                       <button className="row-act" onClick={() => { setEditingServer(s); setServerModal(true); }}>
                         <span className="material-symbols-outlined" style={{ fontSize: 17 }}>edit</span>
                       </button>
-                      <button className="row-act" onClick={async () => { if (confirm(`Удалить «${s.company}»?`)) { await api.deleteServer(s.id); load(); } }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 17 }}>delete</span>
-                      </button>
+                      {isAdmin && (
+                        <button className="row-act" onClick={async () => { if (confirm(`Удалить «${s.company}»?`)) { await api.deleteServer(s.id); load(); } }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 17 }}>delete</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 )}
