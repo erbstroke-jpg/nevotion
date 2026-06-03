@@ -30,7 +30,7 @@ def list_servers(
 
 
 @router.post("", response_model=ServerOut, status_code=201)
-def create_server(payload: ServerCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def create_server(payload: ServerCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     data = payload.model_dump()
     if data.get("connected_at") is None:
         data["connected_at"] = date.today()
@@ -42,10 +42,13 @@ def create_server(payload: ServerCreate, db: Session = Depends(get_db), _: User 
 
 
 @router.patch("/{server_id}", response_model=ServerOut)
-def update_server(server_id: int, payload: ServerUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def update_server(server_id: int, payload: ServerUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models import Role
     server = db.get(Server, server_id)
     if not server:
         raise HTTPException(404, "Бот не найден")
+    if current_user.role != Role.admin and server.owner_id != current_user.id:
+        raise HTTPException(403, "Нет доступа: можно редактировать только своего бота")
     for f, v in payload.model_dump(exclude_unset=True).items():
         setattr(server, f, v)
     db.commit()
