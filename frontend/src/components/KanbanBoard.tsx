@@ -37,12 +37,13 @@ function Card({ task, canMove, onClick, doneColIds }: {
 
   return (
     <div ref={setNodeRef} {...(canMove ? { ...listeners, ...attributes } : {})}
-      className="kcard" style={{ opacity: isDragging ? 0.4 : isDone ? 0.75 : 1, cursor: canMove ? "grab" : "pointer" }}>
+      className="kcard" style={{ opacity: isDragging ? 0.4 : isDone ? 0.75 : 1, cursor: canMove ? "grab" : "pointer" }}
+      onClick={onClick}>
 
       {/* Top row: tag + menu */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <span className="kcard-tag" style={{ background: tag.bg, color: tag.fg }}>{task.tag}</span>
-        <button className="kcard-menu" onClick={(e) => { e.stopPropagation(); onClick(); }} title="Открыть">
+        <button className="kcard-menu" onClick={(e) => e.stopPropagation()} title="Открыть" style={{ display: "none" }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>more_horiz</span>
         </button>
       </div>
@@ -221,13 +222,13 @@ export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChan
       </DragOverlay>
 
       <style jsx global>{`
-        .kcol { width: 284px; background: var(--bg3); border-radius: 10px; display: flex; flex-direction: column; max-height: calc(100vh - 240px); }
+        .kcol { width: 284px; background: var(--bg3); border-radius: 10px; display: flex; flex-direction: column; }
         .kcol-head { padding: 13px 14px; display: flex; align-items: center; gap: 9px; }
         .kcol-name { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text2); flex: 1; }
         .kcol-count { font-size: 11px; font-family: "JetBrains Mono", monospace; color: var(--text3); background: var(--bg2); padding: 1px 8px; border-radius: 10px; }
         .kcol-edit { width: 24px; height: 24px; border: none; background: transparent; color: var(--text3); border-radius: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .kcol-edit:hover { background: var(--bg2); color: var(--text); }
-        .kcol-body { padding: 6px 10px; display: flex; flex-direction: column; gap: 9px; flex: 1; min-height: 80px; overflow-y: auto; border-radius: 8px; transition: background 0.15s; }
+        .kcol-body { padding: 6px 10px; display: flex; flex-direction: column; gap: 9px; flex: 1; min-height: 80px; border-radius: 8px; transition: background 0.15s; }
         .kcol-drop { border: 1.5px dashed var(--primary); border-radius: 8px; padding: 18px; text-align: center; font-size: 12px; color: var(--primary); }
         .kcard { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; transition: border-color 0.15s, box-shadow 0.15s; }
         .kcard:hover { border-color: var(--primary); box-shadow: 0 2px 12px rgba(70,72,212,0.08); }

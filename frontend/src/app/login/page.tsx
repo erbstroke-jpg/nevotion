@@ -52,7 +52,7 @@ export default function LoginPage() {
             N
           </div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>NevoDevs</div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>NevOcean</div>
             <div style={{ fontSize: 11, color: "var(--text3)" }}>Вход в рабочую область</div>
           </div>
         </div>

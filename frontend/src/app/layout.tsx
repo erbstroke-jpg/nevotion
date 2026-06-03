@@ -4,8 +4,8 @@ import { AppProvider } from "@/context/AppContext";
 import { ToastProvider } from "@/context/ToastContext";
 
 export const metadata: Metadata = {
-  title: "NevoDevs Workspace",
-  description: "Внутренний инструмент команды NevoDevs",
+  title: "NevOcean Workspace",
+  description: "Внутренний инструмент команды NevOcean",
 };
 
 export default function RootLayout({

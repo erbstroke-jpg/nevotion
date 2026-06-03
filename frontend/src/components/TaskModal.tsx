@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "./Modal";
 import { useToast } from "@/context/ToastContext";
 import { api } from "@/lib/api";
@@ -32,29 +32,42 @@ export function TaskModal({
     requester_id: "", assignee_ids: [] as number[], task_type: "",
   });
   const [saving, setSaving] = useState(false);
+  const initialFormRef = useRef<string>("");
 
   const cols = [...board.columns].sort((a, b) => a.position - b.position);
 
   useEffect(() => {
     if (!open) return;
+    let newForm: any;
     if (task) {
-      setForm({
+      newForm = {
         title: task.title, description: task.description || '', tag: task.tag, tag_color: task.tag_color, priority: task.priority,
         due_date: task.due_date ?? "", column_id: task.column_id,
         owner_id: task.owner_id ? String(task.owner_id) : "",
         requester_id: task.requester_id ? String(task.requester_id) : "",
         assignee_ids: task.assignee_ids ?? [], task_type: task.task_type ?? "",
-      });
+      };
     } else {
-      setForm({
+      newForm = {
         title: "", description: "", tag: "Задача", tag_color: "indigo", priority: "med", due_date: "",
         column_id: defaultColumnId ?? (cols[0]?.id ?? null),
         owner_id: lockOwnerId ? String(lockOwnerId) : (isAdmin || isShared ? "" : String(user?.id ?? "")),
         requester_id: isBackendQueue ? String(user?.id ?? "") : "",
         assignee_ids: [], task_type: "",
-      });
+      };
     }
+    setForm(newForm);
+    initialFormRef.current = JSON.stringify(newForm);
   }, [open, task, defaultColumnId, lockOwnerId, isAdmin, isShared, isBackendQueue, user]);
+
+  function isDirty() {
+    return JSON.stringify(form) !== initialFormRef.current;
+  }
+
+  function handleClose() {
+    if (isDirty() && !confirm("Внести изменения перед закрытием?")) return;
+    onClose();
+  }
 
   function toggleAssignee(id: number) {
     setForm((f: any) => ({
@@ -77,6 +90,7 @@ export function TaskModal({
       };
       if (task) await api.updateTask(task.id, payload);
       else await api.createTask({ ...payload, board_id: board.id });
+      initialFormRef.current = JSON.stringify(form);
       onClose(); onSaved(); toast(task ? "Задача обновлена" : "Задача создана");
     } catch (e: any) { toast(e.message, "error"); }
     finally { setSaving(false); }
@@ -98,19 +112,21 @@ export function TaskModal({
   const backenders = users.filter((u) => u.position === "Бэкенд" || u.position === "Главный тех лид");
 
   return (
-    <Modal open={open} onClose={onClose} title={task ? "Задача" : "Новая задача"} width={480}
+    <Modal open={open} onClose={handleClose} title={task ? "Задача" : "Новая задача"} width={480}
       footer={
         <>
           {task && <button className="btn btn-ghost" style={{ marginRight: "auto", color: "var(--red)" }} onClick={remove}>Удалить</button>}
           {task && !task.completed_at && <button className="btn btn-ghost" style={{ color: "var(--green)" }} onClick={complete}>✓ Завершить</button>}
-          <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn btn-ghost" onClick={handleClose}>Отмена</button>
           <button className="btn btn-primary" onClick={save} disabled={saving || !form.title.trim()}>Сохранить</button>
         </>
       }>
       <div className="field">
         <label className="field-label">Название</label>
-        <input className="field-input" value={form.title} autoFocus
-          onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Что нужно сделать?" />
+        <textarea className="field-input" value={form.title} autoFocus rows={1}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
+          placeholder="Что нужно сделать?"
+          style={{ resize: "vertical", minHeight: 40 }} />
       </div>
 
       <div className="field">
