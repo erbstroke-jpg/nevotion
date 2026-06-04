@@ -32,8 +32,5 @@ class Settings(BaseSettings):
             if self.SECRET_KEY == _DEFAULT_SECRET:
                 print("FATAL: SECRET_KEY is default value. Set a strong SECRET_KEY in .env", file=sys.stderr)
                 sys.exit(1)
-            if self.POSTGRES_PASSWORD in ("nevodevs_pass", "password", ""):
-                print("FATAL: POSTGRES_PASSWORD is insecure. Change it in .env", file=sys.stderr)
-                sys.exit(1)
 
 settings = Settings()

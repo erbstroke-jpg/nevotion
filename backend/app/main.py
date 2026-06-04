@@ -39,7 +39,7 @@ if settings.ENVIRONMENT != "production":
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=False,  # Bearer token in header, no cookies
     allow_methods=["*"],
     allow_headers=["*"],
 )

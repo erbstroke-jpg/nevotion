@@ -36,7 +36,14 @@ def add_column(payload: ColumnDefCreate, db: Session = Depends(get_db), _: User 
     if not dept:
         raise HTTPException(404, "Отдел продаж не найден")
     maxpos = db.query(ColumnDef).filter(ColumnDef.department_id == dept.id).count()
-    col = ColumnDef(department_id=dept.id, key=_slugify_key(payload.label),
+    # Ensure unique key within department by appending a counter suffix if needed
+    base_key = _slugify_key(payload.label)
+    key = base_key
+    suffix = 1
+    while db.query(ColumnDef).filter(ColumnDef.department_id == dept.id, ColumnDef.key == key).first():
+        key = f"{base_key}_{suffix}"
+        suffix += 1
+    col = ColumnDef(department_id=dept.id, key=key,
                     label=payload.label, kind=payload.kind, position=maxpos)
     db.add(col)
     db.commit()

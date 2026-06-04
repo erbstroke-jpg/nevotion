@@ -37,8 +37,10 @@ def ensure_personal_board(db: Session, user_id: int) -> Board:
     return board
 
 
-def _can_edit_board(user: User, board: Board) -> bool:
+def _can_edit_board(user: User, board: Board, db: Session | None = None) -> bool:
     """Personal board: owner or admin. Shared boards (backend_queue, qcc, founder): broader rules."""
+    if not _can_view_board(user, board, db):
+        return False
     if user.role == Role.admin:
         return True
     if board.kind == "personal":
@@ -50,9 +52,16 @@ def _can_edit_board(user: User, board: Board) -> bool:
     return False
 
 
-def _can_view_board(user: User, board: Board) -> bool:
+def _can_view_board(user: User, board: Board, db: Session | None = None) -> bool:
+    """Check board visibility. Respects founder-only boards and admin_only departments."""
+    # founder boards: only founders
     if board.kind == "founder":
         return user.is_founder
+    # boards belonging to admin_only department: only founders
+    if board.department_id and db is not None:
+        dept = db.get(Department, board.department_id)
+        if dept and dept.admin_only and not user.is_founder:
+            return False
     return True
 
 
@@ -65,7 +74,7 @@ def get_personal_board(user_id: int, db: Session = Depends(get_db), _: User = De
 @router.get("/by-department/{dept_id}", response_model=list[BoardOut])
 def boards_for_department(dept_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     boards = db.query(Board).filter(Board.department_id == dept_id).all()
-    return [b for b in boards if _can_view_board(user, b)]
+    return [b for b in boards if _can_view_board(user, b, db)]
 
 
 @router.get("/{board_id}", response_model=BoardOut)
@@ -73,7 +82,7 @@ def get_board(board_id: int, db: Session = Depends(get_db), user: User = Depends
     board = db.get(Board, board_id)
     if not board:
         raise HTTPException(404, "Доска не найдена")
-    if not _can_view_board(user, board):
+    if not _can_view_board(user, board, db):
         raise HTTPException(403, "Нет доступа")
     return board
 
@@ -84,7 +93,7 @@ def add_column(board_id: int, payload: BoardColumnCreate, db: Session = Depends(
     board = db.get(Board, board_id)
     if not board:
         raise HTTPException(404, "Доска не найдена")
-    if not _can_edit_board(user, board):
+    if not _can_edit_board(user, board, db):
         raise HTTPException(403, "Нет прав на изменение доски")
     maxpos = max([c.position for c in board.columns], default=-1)
     col = BoardColumn(board_id=board_id, name=payload.name, color=payload.color,
@@ -101,7 +110,7 @@ def update_column(column_id: int, payload: BoardColumnUpdate, db: Session = Depe
     if not col:
         raise HTTPException(404, "Колонка не найдена")
     board = db.get(Board, col.board_id)
-    if not _can_edit_board(user, board):
+    if not _can_edit_board(user, board, db):
         raise HTTPException(403, "Нет прав")
     for f, v in payload.model_dump(exclude_unset=True).items():
         setattr(col, f, v)
@@ -116,7 +125,7 @@ def delete_column(column_id: int, db: Session = Depends(get_db), user: User = De
     if not col:
         raise HTTPException(404, "Колонка не найдена")
     board = db.get(Board, col.board_id)
-    if not _can_edit_board(user, board):
+    if not _can_edit_board(user, board, db):
         raise HTTPException(403, "Нет прав")
     # move tasks in this column to the first remaining column
     remaining = [c for c in board.columns if c.id != column_id]
@@ -125,4 +134,8 @@ def delete_column(column_id: int, db: Session = Depends(get_db), user: User = De
     target = sorted(remaining, key=lambda c: c.position)[0]
     db.query(Task).filter(Task.column_id == column_id).update({Task.column_id: target.id})
     db.delete(col)
+    db.flush()
+    # Re-pack positions to avoid gaps
+    for i, c in enumerate(sorted(remaining, key=lambda c: c.position)):
+        c.position = i
     db.commit()

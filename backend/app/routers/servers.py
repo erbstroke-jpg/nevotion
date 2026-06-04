@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/servers", tags=["servers"])
 def list_servers(
     status: Optional[ServerStatus] = Query(None),
     owner_id: Optional[int] = Query(None),
-    limit: int = Query(50, le=200),
+    limit: int = Query(1000, le=5000),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -31,9 +31,13 @@ def list_servers(
 
 @router.post("", response_model=ServerOut, status_code=201)
 def create_server(payload: ServerCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models import Role
     data = payload.model_dump()
     if data.get("connected_at") is None:
         data["connected_at"] = date.today()
+    # Non-admins can only create bots under themselves
+    if current_user.role != Role.admin:
+        data["owner_id"] = current_user.id
     server = Server(**data)
     db.add(server)
     db.commit()

@@ -10,6 +10,15 @@ from app.models import Task, Board, BoardColumn, User, Role
 from app.schemas import TaskOut, TaskCreate, TaskUpdate, TaskMove
 from app.routers.boards import _can_edit_board, _can_view_board
 
+
+def _validate_column(db: Session, column_id: int | None, board_id: int) -> None:
+    """Ensure the column belongs to the board, preventing cross-board IDOR."""
+    if column_id is None:
+        return
+    col = db.get(BoardColumn, column_id)
+    if not col or col.board_id != board_id:
+        raise HTTPException(400, "Колонка не принадлежит этой доске")
+
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
@@ -51,7 +60,7 @@ def list_tasks(
     q = db.query(Task).options(joinedload(Task.owner), joinedload(Task.requester))
     if board_id:
         board = db.get(Board, board_id)
-        if board and not _can_view_board(user, board):
+        if board and not _can_view_board(user, board, db):
             raise HTTPException(403, "Нет доступа")
         q = q.filter(Task.board_id == board_id)
     return q.order_by(Task.position, Task.id).all()
@@ -62,10 +71,11 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db), user: User =
     board = db.get(Board, payload.board_id)
     if not board:
         raise HTTPException(404, "Доска не найдена")
-    if not _can_edit_board(user, board):
+    if not _can_edit_board(user, board, db):
         raise HTTPException(403, "Нет прав на эту доску")
 
     data = payload.model_dump()
+    _validate_column(db, data.get("column_id"), board.id)
     # personal boards: staff can only create their own tasks
     if board.kind == "personal" and user.role != Role.admin:
         data["owner_id"] = board.owner_id
@@ -91,7 +101,10 @@ def update_task(task_id: int, payload: TaskUpdate, db: Session = Depends(get_db)
     task = _load(db, task_id)
     if not _can_modify(db, user, task):
         raise HTTPException(403, "Вы можете изменять только свои задачи")
-    for f, v in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    if "column_id" in updates:
+        _validate_column(db, updates["column_id"], task.board_id)
+    for f, v in updates.items():
         setattr(task, f, v)
     _apply_done_logic(db, task)
     db.commit()
@@ -103,6 +116,7 @@ def move_task(task_id: int, payload: TaskMove, db: Session = Depends(get_db), us
     task = _load(db, task_id)
     if not _can_modify(db, user, task):
         raise HTTPException(403, "Вы можете перемещать только свои задачи")
+    _validate_column(db, payload.column_id, task.board_id)
 
     old_col = task.column_id
     new_col = payload.column_id

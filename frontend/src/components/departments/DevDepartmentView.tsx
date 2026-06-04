@@ -22,6 +22,8 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
   const [serverModal, setServerModal] = useState(false);
   const [editingServer, setEditingServer] = useState<Server | null>(null);
   const [prompterFilter, setPrompterFilter] = useState<number | null>(null);
+  const [serverPage, setServerPage] = useState(1);
+  const SERVER_PAGE_SIZE = 30;
 
   const load = useCallback(() => {
     api.listUsers(dept.id).then(setUsers).catch(() => {});
@@ -35,6 +37,13 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
   const prompters = users.filter((u) => u.position === "Промпт-инженер" || u.position === "Тимлид");
 
   const filteredServers = prompterFilter ? servers.filter((sv) => sv.owner_id === prompterFilter) : servers;
+  const visibleServers = filteredServers.slice(0, serverPage * SERVER_PAGE_SIZE);
+  const hasMoreServers = filteredServers.length > visibleServers.length;
+
+  function setFilter(id: number | null) {
+    setPrompterFilter(id);
+    setServerPage(1);
+  }
 
   const fmtDate = (d: string | null) => {
     if (!d) return "—";
@@ -104,10 +113,10 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
         </button>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <div className={`chip ${prompterFilter === null ? "active" : ""}`} onClick={() => setPrompterFilter(null)}>Все ({servers.length})</div>
+        <div className={`chip ${prompterFilter === null ? "active" : ""}`} onClick={() => setFilter(null)}>Все ({servers.length})</div>
         {[...users.filter((u) => u.position === "Промпт-инженер" || u.position === "Тимлид")].map((u) => {
           const cnt = servers.filter((sv) => sv.owner_id === u.id).length;
-          return <div key={u.id} className={`chip ${prompterFilter === u.id ? "active" : ""}`} onClick={() => setPrompterFilter(u.id === prompterFilter ? null : u.id)}>{u.name} ({cnt})</div>;
+          return <div key={u.id} className={`chip ${prompterFilter === u.id ? "active" : ""}`} onClick={() => setFilter(u.id === prompterFilter ? null : u.id)}>{u.name} ({cnt})</div>;
         })}
       </div>
       <div className="card" style={{ overflow: "hidden" }}><div style={{ overflowX: "auto" }}>
@@ -116,7 +125,7 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
             <tr><th>Компания</th><th>Статус</th><th>Дата подключения</th><th>Промптер</th><th></th></tr>
           </thead>
           <tbody>
-            {filteredServers.map((s) => (
+            {visibleServers.map((s) => (
               <tr key={s.id}>
                 <td style={{ color: "var(--text)", fontWeight: 500 }}>{s.company}</td>
                 <td><StatusBadge status={s.status} /></td>
@@ -144,6 +153,14 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
             ))}
           </tbody>
         </table>
+        {hasMoreServers && (
+          <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
+            <button className="btn btn-ghost" style={{ width: "100%", fontSize: 12 }}
+              onClick={() => setServerPage(p => p + 1)}>
+              Загрузить ещё ({filteredServers.length - visibleServers.length})
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Backend queue */}

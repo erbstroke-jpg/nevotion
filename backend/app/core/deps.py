@@ -21,10 +21,12 @@ def get_current_user(
     )
     try:
         payload = decode_token(token)
+        if payload is None:
+            raise credentials_exc
         user_id: int = payload.get("sub")
         if not user_id:
             raise credentials_exc
-    except JWTError:
+    except (JWTError, AttributeError):
         raise credentials_exc
 
     user = db.get(User, user_id)
