@@ -444,7 +444,7 @@ function MeetingDetailModal({ open, onClose, onSaved, meeting, closers, currentU
     if (editMode) {
       setEditForm({
         closer_id: String(meeting.closer_id ?? ""),
-        meeting_date: toLocalDT(new Date(meeting.meeting_date)),
+        meeting_date: isoToInput(meeting.meeting_date),
         address: meeting.address || "",
         client_name: meeting.client_name || "",
         client_phone: meeting.client_phone || "",
@@ -557,7 +557,7 @@ function MeetingDetailModal({ open, onClose, onSaved, meeting, closers, currentU
       )}
 
       <MeetingModal open={subModal} onClose={() => setSubModal(false)} onSaved={() => { setSubModal(false); onSaved(); onClose(); }}
-        closers={closers} defaultDate={new Date(meeting.meeting_date)} />
+        closers={closers} defaultDate={isoToWallDate(meeting.meeting_date)} />
     </Modal>
   );
 }
@@ -682,16 +682,32 @@ function toLocalDT(date: Date): string {
   return `${Y}-${M}-${D}T${h}:${m}`;
 }
 
+// Parse "wall-clock" components directly from the ISO string, WITHOUT timezone
+// conversion. The backend stores/returns meeting_date with a +00:00 offset, and
+// using new Date() would shift it by the browser's timezone (e.g. +6 in Bishkek).
 function fmtDate(d: string) {
-  const dt = new Date(d);
-  return `${String(dt.getDate()).padStart(2,"0")}.${String(dt.getMonth()+1).padStart(2,"0")}.${dt.getFullYear()}`;
+  const datePart = d.slice(0, 10); // "YYYY-MM-DD"
+  const [Y, M, D] = datePart.split("-");
+  if (!Y || !M || !D) return d;
+  return `${D}.${M}.${Y}`;
 }
 function fmtTime(d: string) {
-  const dt = new Date(d);
-  return `${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;
+  const t = d.includes("T") ? d.split("T")[1] : "";
+  return t ? t.slice(0, 5) : ""; // "HH:MM"
 }
 function fmtDatetime(d: string) {
-  return `${fmtDate(d)} ${fmtTime(d)}`;
+  const t = fmtTime(d);
+  return t ? `${fmtDate(d)} ${t}` : fmtDate(d);
+}
+// ISO string -> value for <input type="datetime-local"> (wall-clock, no TZ shift)
+function isoToInput(d: string): string {
+  return d.slice(0, 16); // "YYYY-MM-DDTHH:MM"
+}
+// ISO string -> local Date carrying the same wall-clock components (no TZ shift)
+function isoToWallDate(d: string): Date {
+  const Y = Number(d.slice(0, 4)), M = Number(d.slice(5, 7)), D = Number(d.slice(8, 10));
+  const h = Number(d.slice(11, 13)) || 0, m = Number(d.slice(14, 16)) || 0;
+  return new Date(Y, (M || 1) - 1, D || 1, h, m);
 }
 
 function TableStyles() {
