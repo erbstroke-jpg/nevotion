@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -33,7 +34,7 @@ class BugReportOut(BaseModel):
     description: str
     status: BugStatus
     priority: str
-    created_at: str
+    created_at: datetime
     reporter: Optional[UserOut] = None
 
 
