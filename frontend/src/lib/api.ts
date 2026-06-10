@@ -138,6 +138,10 @@ export const api = {
   // sales column reorder
   reorderSalesColumn: (id: number, direction: "left" | "right") =>
     request<any>(`/sales/columns/${id}/position?direction=${direction}`, { method: "PATCH" }),
+
+  // kanban column reorder
+  reorderColumn: (colId: number, newPosition: number) =>
+    request<BoardColumn>(`/boards/columns/${colId}/position?new_position=${newPosition}`, { method: "PATCH" }),
 };
 
 // search
@@ -148,6 +152,20 @@ export const searchApi = {
 // notifications
 export const notifApi = {
   get: () => request<{ count: number; items: any[] }>("/notifications"),
+};
+
+// bug reports
+export const bugApi = {
+  list: (status?: string) => {
+    const qs = status ? `?status=${status}` : "";
+    return request<import("./types").BugReport[]>(`/bugs${qs}`);
+  },
+  countNew: () => request<{ count: number }>("/bugs/count/new"),
+  create: (data: { title: string; description?: string; priority?: string }) =>
+    request<import("./types").BugReport>("/bugs", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: number, data: any) =>
+    request<import("./types").BugReport>(`/bugs/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  delete: (id: number) => request<void>(`/bugs/${id}`, { method: "DELETE" }),
 };
 
 // meetings

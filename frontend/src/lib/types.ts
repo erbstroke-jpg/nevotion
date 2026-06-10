@@ -173,6 +173,34 @@ export const MEETING_STATUS: Record<MeetingStatus, { label: string; color: strin
   rescheduled:{ label: "Перенёс",       color: "var(--text3)",    bg: "var(--bg3)" },
 };
 
+// ===== Bug Reports =====
+export type BugStatus = "new" | "in_progress" | "resolved";
+export type BugPriority = "low" | "medium" | "high" | "critical";
+
+export interface BugReport {
+  id: number;
+  reporter_id: number | null;
+  title: string;
+  description: string;
+  status: BugStatus;
+  priority: BugPriority;
+  created_at: string;
+  reporter: User | null;
+}
+
+export const BUG_STATUS: Record<BugStatus, { label: string; color: string; bg: string }> = {
+  new:         { label: "Новый",     color: "var(--primary)", bg: "var(--primary-dim)" },
+  in_progress: { label: "В работе",  color: "var(--yellow)",  bg: "rgba(202,138,4,0.12)" },
+  resolved:    { label: "Решён",     color: "var(--green)",   bg: "var(--green-bg)" },
+};
+
+export const BUG_PRIORITY: Record<BugPriority, { label: string; color: string }> = {
+  low:      { label: "Низкий",    color: "var(--text3)" },
+  medium:   { label: "Средний",   color: "var(--yellow)" },
+  high:     { label: "Высокий",   color: "var(--orange, #e67e22)" },
+  critical: { label: "Критичный", color: "var(--red)" },
+};
+
 export interface SalesSummary {
   setters: { user: User | null; totals: Record<string, number> }[];
   closers: { user: User | null; counts: Record<string, number>; total: number }[];

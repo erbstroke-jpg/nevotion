@@ -119,6 +119,43 @@ def update_column(column_id: int, payload: BoardColumnUpdate, db: Session = Depe
     return col
 
 
+@router.patch("/columns/{column_id}/position", response_model=BoardColumnOut)
+def reorder_column(
+    column_id: int,
+    new_position: int = Query(..., ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    col = db.get(BoardColumn, column_id)
+    if not col:
+        raise HTTPException(404, "Колонка не найдена")
+    board = db.get(Board, col.board_id)
+    if not _can_edit_board(user, board, db):
+        raise HTTPException(403, "Нет прав")
+
+    all_cols = sorted(board.columns, key=lambda c: c.position)
+    max_pos = len(all_cols) - 1
+    new_position = min(new_position, max_pos)
+    old_pos = col.position
+
+    if old_pos == new_position:
+        return col
+
+    if old_pos < new_position:
+        for c in all_cols:
+            if old_pos < c.position <= new_position and c.id != column_id:
+                c.position -= 1
+    else:
+        for c in all_cols:
+            if new_position <= c.position < old_pos and c.id != column_id:
+                c.position += 1
+
+    col.position = new_position
+    db.commit()
+    db.refresh(col)
+    return col
+
+
 @router.delete("/columns/{column_id}", status_code=204)
 def delete_column(column_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     col = db.get(BoardColumn, column_id)

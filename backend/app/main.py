@@ -12,7 +12,7 @@ from app.core.database import Base, engine
 from app.middleware import last_seen_middleware
 from app.routers import (
     auth, users, servers, tasks, departments, boards, sales, marketing,
-    search, notifications, meetings,
+    search, notifications, meetings, bug_reports,
 )
 
 limiter = Limiter(key_func=get_remote_address)
@@ -57,6 +57,7 @@ app.include_router(marketing.router)
 app.include_router(search.router)
 app.include_router(notifications.router)
 app.include_router(meetings.router)
+app.include_router(bug_reports.router)
 
 
 @app.get("/api/health")

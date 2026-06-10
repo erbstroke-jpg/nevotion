@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useApp } from "@/context/AppContext";
-import { api, searchApi, notifApi } from "@/lib/api";
+import { api, searchApi, notifApi, bugApi } from "@/lib/api";
 import type { Department } from "@/lib/types";
 import { Avatar } from "./Avatar";
 
@@ -26,6 +26,7 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
   const searchRef = useRef<HTMLDivElement>(null);
   const searchTimer = useRef<any>(null);
 
+  const [bugCount, setBugCount] = useState(0);
   // Notifications state
   const [notifs, setNotifs] = useState<{ count: number; items: any[] }>({ count: 0, items: [] });
   const [notifOpen, setNotifOpen] = useState(false);
@@ -39,6 +40,7 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
     if (user) {
       api.listDepartments().then(setDepartments).catch(() => {});
       notifApi.get().then(setNotifs).catch(() => {});
+      bugApi.countNew().then((r) => setBugCount(r.count)).catch(() => {});
     }
   }, [user]);
 
@@ -101,6 +103,19 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
                 <span>{item.label}</span>
               </Link>
             ))}
+            <Link href={`/team/${user.id}`} className={`nav-link ${pathname === `/team/${user.id}` ? "active" : ""}`}>
+              <span className="material-symbols-outlined nav-ico">view_kanban</span>
+              <span>Мои задачи</span>
+            </Link>
+            <Link href="/bugs" className={`nav-link ${pathname.startsWith("/bugs") ? "active" : ""}`}>
+              <span className="material-symbols-outlined nav-ico">bug_report</span>
+              <span style={{ flex: 1 }}>Баги</span>
+              {isAdmin && bugCount > 0 && (
+                <span style={{ background: "var(--red)", color: "white", fontSize: 10, fontWeight: 700, borderRadius: 8, padding: "1px 5px", fontFamily: "JetBrains Mono, monospace" }}>
+                  {bugCount > 9 ? "9+" : bugCount}
+                </span>
+              )}
+            </Link>
           </div>
 
           {departments.filter((d) => !d.admin_only).length > 0 && (

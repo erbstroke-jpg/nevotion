@@ -60,9 +60,31 @@ def list_tasks(
     q = db.query(Task).options(joinedload(Task.owner), joinedload(Task.requester))
     if board_id:
         board = db.get(Board, board_id)
-        if board and not _can_view_board(user, board, db):
+        if not board:
+            raise HTTPException(404, "Доска не найдена")
+        if not _can_view_board(user, board, db):
             raise HTTPException(403, "Нет доступа")
-        q = q.filter(Task.board_id == board_id)
+
+        personal_tasks = q.filter(Task.board_id == board_id).order_by(Task.position, Task.id).all()
+
+        # For personal boards, also include backend_queue tasks where the board owner is an assignee
+        if board.kind == "personal" and board.owner_id:
+            owner_id = board.owner_id
+            queue_boards = db.query(Board).filter(Board.kind == "backend_queue").all()
+            queue_board_ids = [b.id for b in queue_boards]
+            if queue_board_ids:
+                queue_tasks = (
+                    db.query(Task)
+                    .options(joinedload(Task.owner), joinedload(Task.requester))
+                    .filter(Task.board_id.in_(queue_board_ids))
+                    .all()
+                )
+                for t in queue_tasks:
+                    if t.assignee_ids and owner_id in t.assignee_ids:
+                        personal_tasks.append(t)
+
+        return personal_tasks
+
     return q.order_by(Task.position, Task.id).all()
 
 

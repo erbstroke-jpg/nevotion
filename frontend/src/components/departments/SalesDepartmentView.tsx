@@ -12,6 +12,28 @@ import {
   Meeting, MeetingStatus, MEETING_STATUS, SalesSummary,
 } from "@/lib/types";
 
+// ============================= DATE RANGE FILTER =============================
+function DateRangeFilter({ from, to, onFrom, onTo, onReset }: {
+  from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void; onReset?: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 0, background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", height: 34 }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 16, color: "var(--text3)", padding: "0 8px", flexShrink: 0 }}>calendar_today</span>
+      <input type="date" value={from} onChange={(e) => onFrom(e.target.value)}
+        style={{ border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 12, color: "var(--text2)", width: 116, padding: "0 4px", cursor: "pointer" }} />
+      <span style={{ color: "var(--text3)", fontSize: 12, padding: "0 4px" }}>—</span>
+      <input type="date" value={to} onChange={(e) => onTo(e.target.value)}
+        style={{ border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 12, color: "var(--text2)", width: 116, padding: "0 4px", cursor: "pointer" }} />
+      {onReset && (from || to) && (
+        <button onClick={onReset} title="Сбросить"
+          style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text3)", padding: "0 8px", display: "flex", alignItems: "center", height: "100%", flexShrink: 0 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 15 }}>close</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ============================= SETTERS TABLE =============================
 function SettersSection({ dept, departments, isAdmin, currentUserId }: {
   dept: Department; departments: Department[]; isAdmin: boolean; currentUserId?: number;
@@ -65,9 +87,8 @@ function SettersSection({ dept, departments, isAdmin, currentUserId }: {
           <option value="">Все</option>
           {setters.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
-        <input className="field-input" style={{ width: "auto" }} type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
-        <span style={{ color: "var(--text3)" }}>—</span>
-        <input className="field-input" style={{ width: "auto" }} type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
+        <DateRangeFilter from={fFrom} to={fTo} onFrom={setFFrom} onTo={setFTo}
+          onReset={() => { setFFrom(""); setFTo(""); }} />
         {(fUser || fFrom || fTo) && <button className="btn btn-ghost" onClick={() => { setFUser(""); setFFrom(""); setFTo(""); }}>Сбросить</button>}
       </div>
 
@@ -146,10 +167,10 @@ function MeetingsCalendar({ dept, departments, isAdmin, currentUser }: {
   for (let i = 0; i < startDow; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-  // group meetings by day
+  // group meetings by day — parse from ISO string directly to avoid TZ shift
   const byDay: Record<number, Meeting[]> = {};
   for (const m of meetings) {
-    const d = new Date(m.meeting_date).getDate();
+    const d = parseInt(m.meeting_date.slice(8, 10), 10);
     if (!byDay[d]) byDay[d] = [];
     byDay[d].push(m);
   }
@@ -282,10 +303,8 @@ function SummarySection() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <div className="section-label">Общая сводка отдела</div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input className="field-input" style={{ width: "auto" }} type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
-          <span style={{ color: "var(--text3)" }}>—</span>
-          <input className="field-input" style={{ width: "auto" }} type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
-          {(fFrom || fTo) && <button className="btn btn-ghost" onClick={() => { setFFrom(""); setFTo(""); }}>Сбросить</button>}
+          <DateRangeFilter from={fFrom} to={fTo} onFrom={setFFrom} onTo={setFTo}
+            onReset={() => { setFFrom(""); setFTo(""); }} />
         </div>
       </div>
 
@@ -362,7 +381,8 @@ function MeetingModal({ open, onClose, onSaved, closers, defaultDate }: {
 
   useEffect(() => {
     if (!open) return;
-    const d = defaultDate.toISOString().slice(0, 16);
+    // Use local date/time to avoid UTC timezone shift
+    const d = toLocalDT(defaultDate);
     setForm({ closer_id: closers[0]?.id?.toString() ?? "", meeting_date: d, address: "", client_name: "", client_phone: "", notes: "" });
   }, [open]);
 
@@ -588,6 +608,15 @@ export function ColumnsModal({ open, onClose, onSaved, columns, addFn, delFn, re
 }
 
 // ============================= UTILS =============================
+function toLocalDT(date: Date): string {
+  const Y = date.getFullYear();
+  const M = String(date.getMonth() + 1).padStart(2, "0");
+  const D = String(date.getDate()).padStart(2, "0");
+  const h = String(date.getHours()).padStart(2, "0");
+  const m = String(date.getMinutes()).padStart(2, "0");
+  return `${Y}-${M}-${D}T${h}:${m}`;
+}
+
 function fmtDate(d: string) {
   const dt = new Date(d);
   return `${String(dt.getDate()).padStart(2,"0")}.${String(dt.getMonth()+1).padStart(2,"0")}.${dt.getFullYear()}`;

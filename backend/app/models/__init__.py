@@ -182,6 +182,26 @@ class ColumnDef(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class BugStatus(str, enum.Enum):
+    new         = "new"
+    in_progress = "in_progress"
+    resolved    = "resolved"
+
+
+class BugReport(Base):
+    __tablename__ = "bug_reports"
+
+    id:          Mapped[int]           = mapped_column(primary_key=True)
+    reporter_id: Mapped[int | None]    = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    title:       Mapped[str]           = mapped_column(String(300), nullable=False)
+    description: Mapped[str]           = mapped_column(Text, default="")
+    status:      Mapped[BugStatus]     = mapped_column(Enum(BugStatus), default=BugStatus.new)
+    priority:    Mapped[str]           = mapped_column(String(20), default="medium")  # low | medium | high | critical
+    created_at:  Mapped[datetime]      = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    reporter: Mapped["User"] = relationship()
+
+
 class MeetingStatus(str, enum.Enum):
     scheduled  = "scheduled"   # запланирована
     closed     = "closed"      # Закрыт
