@@ -432,64 +432,129 @@ function MeetingDetailModal({ open, onClose, onSaved, meeting, closers, currentU
   const toast = useToast();
   const st = MEETING_STATUS[meeting.status as MeetingStatus];
   const [subModal, setSubModal] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
+  const [saving, setSaving] = useState(false);
+
   const canChangeStatus = isAdmin || meeting.closer_id === currentUser?.id;
+  const canEdit = isAdmin || currentUser?.position === "Сеттер" || currentUser?.position === "Руководитель продаж";
   const STATUS_ACTIONS: MeetingStatus[] = ["closed","minus","push","rescheduled"];
 
+  useEffect(() => {
+    if (editMode) {
+      setEditForm({
+        closer_id: String(meeting.closer_id ?? ""),
+        meeting_date: toLocalDT(new Date(meeting.meeting_date)),
+        address: meeting.address || "",
+        client_name: meeting.client_name || "",
+        client_phone: meeting.client_phone || "",
+        notes: meeting.notes || "",
+      });
+    }
+  }, [editMode, meeting]);
+
+  async function saveEdit() {
+    setSaving(true);
+    try {
+      await meetingApi.update(meeting.id, { ...editForm, closer_id: Number(editForm.closer_id) });
+      toast("Встреча обновлена");
+      setEditMode(false);
+      onSaved();
+    } catch (e: any) { toast(e.message, "error"); }
+    finally { setSaving(false); }
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title="Встреча" width={480}
-      footer={<button className="btn btn-ghost" onClick={onClose}>Закрыть</button>}>
-      {/* Status badge */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-        <span className="status-chip" style={{ background: st.bg, color: st.color, fontSize: 13, padding: "5px 12px" }}>{st.label}</span>
-        <span style={{ fontSize: 12, color: "var(--text3)" }}>Клоузер: <strong>{meeting.closer?.name ?? "—"}</strong></span>
-        <span style={{ fontSize: 12, color: "var(--text3)", marginLeft: "auto" }}>от {meeting.setter?.name ?? "—"}</span>
-      </div>
+    <Modal open={open} onClose={() => { setEditMode(false); onClose(); }} title="Встреча" width={500}
+      footer={
+        editMode
+          ? <><button className="btn btn-ghost" onClick={() => setEditMode(false)}>Отмена</button><button className="btn btn-primary" onClick={saveEdit} disabled={saving}>Сохранить</button></>
+          : <div style={{ display: "flex", gap: 8, width: "100%", justifyContent: "space-between" }}>
+              {canEdit && <button className="btn btn-ghost" onClick={() => setEditMode(true)}><span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit</span> Редактировать</button>}
+              <button className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={onClose}>Закрыть</button>
+            </div>
+      }>
 
-      {/* Details */}
-      <div className="detail-grid">
-        <DetailRow icon="person" label="Клиент" value={meeting.client_name} />
-        <DetailRow icon="phone" label="Телефон" value={meeting.client_phone || "—"} />
-        <DetailRow icon="calendar_today" label="Дата" value={fmtDatetime(meeting.meeting_date)} />
-        <DetailRow icon="location_on" label="Адрес" value={meeting.address || "—"} />
-        {meeting.notes && <DetailRow icon="notes" label="Заметки" value={meeting.notes} />}
-      </div>
-
-      {/* Status buttons for closer */}
-      {canChangeStatus && meeting.status !== "closed" && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text3)", marginBottom: 8 }}>Изменить статус</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {STATUS_ACTIONS.filter((s) => s !== meeting.status).map((s) => {
-              const ms = MEETING_STATUS[s];
-              return (
-                <button key={s} onClick={() => onStatusChange(meeting, s)}
-                  style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${ms.color}`, background: ms.bg, color: ms.color, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
-                  {ms.label}
-                </button>
-              );
-            })}
+      {editMode ? (
+        /* ── Edit form ── */
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="field"><label className="field-label">Клоузер</label>
+              <select className="field-select" value={editForm.closer_id} onChange={(e) => setEditForm({ ...editForm, closer_id: e.target.value })}>
+                {closers.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+            <div className="field"><label className="field-label">Дата и время</label>
+              <input className="field-input" type="datetime-local" value={editForm.meeting_date} onChange={(e) => setEditForm({ ...editForm, meeting_date: e.target.value })} />
+            </div>
+          </div>
+          <div className="field"><label className="field-label">Имя клиента</label>
+            <input className="field-input" value={editForm.client_name} onChange={(e) => setEditForm({ ...editForm, client_name: e.target.value })} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="field"><label className="field-label">Телефон</label>
+              <input className="field-input" value={editForm.client_phone} onChange={(e) => setEditForm({ ...editForm, client_phone: e.target.value })} />
+            </div>
+            <div className="field"><label className="field-label">Адрес</label>
+              <input className="field-input" value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
+            </div>
+          </div>
+          <div className="field"><label className="field-label">Заметки</label>
+            <textarea className="field-input" value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={3} style={{ resize: "vertical" }} />
           </div>
         </div>
-      )}
+      ) : (
+        /* ── View mode ── */
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+            <span className="status-chip" style={{ background: st.bg, color: st.color, fontSize: 13, padding: "5px 12px" }}>{st.label}</span>
+            <span style={{ fontSize: 12, color: "var(--text3)" }}>Клоузер: <strong>{meeting.closer?.name ?? "—"}</strong></span>
+            <span style={{ fontSize: 12, color: "var(--text3)", marginLeft: "auto" }}>от {meeting.setter?.name ?? "—"}</span>
+          </div>
 
-      {/* Sub-meetings */}
-      {meeting.sub_meetings?.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text3)", marginBottom: 8 }}>Подвстречи ({meeting.sub_meetings.length})</div>
-          {meeting.sub_meetings.map((s: Meeting) => (
-            <div key={s.id} style={{ padding: "10px 12px", background: "var(--bg3)", borderRadius: 8, marginBottom: 6, fontSize: 12 }}>
-              <div style={{ fontWeight: 500, color: "var(--text)" }}>{s.client_name}</div>
-              <div style={{ color: "var(--text3)", marginTop: 2 }}>{fmtDatetime(s.meeting_date)} · {s.address || "—"}</div>
-              <span className="status-chip" style={{ background: MEETING_STATUS[s.status].bg, color: MEETING_STATUS[s.status].color, marginTop: 4 }}>{MEETING_STATUS[s.status].label}</span>
+          <div className="detail-grid">
+            <DetailRow icon="person" label="Клиент" value={meeting.client_name} />
+            <DetailRow icon="phone" label="Телефон" value={meeting.client_phone || "—"} />
+            <DetailRow icon="calendar_today" label="Дата" value={fmtDatetime(meeting.meeting_date)} />
+            <DetailRow icon="location_on" label="Адрес" value={meeting.address || "—"} />
+            {meeting.notes && <DetailRow icon="notes" label="Заметки" value={meeting.notes} />}
+          </div>
+
+          {canChangeStatus && meeting.status !== "closed" && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text3)", marginBottom: 8 }}>Изменить статус</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {STATUS_ACTIONS.filter((s) => s !== meeting.status).map((s) => {
+                  const ms = MEETING_STATUS[s];
+                  return (
+                    <button key={s} onClick={() => onStatusChange(meeting, s)}
+                      style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${ms.color}`, background: ms.bg, color: ms.color, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+                      {ms.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {/* Add sub-meeting */}
-      <button className="btn btn-ghost" style={{ marginTop: 14, width: "100%", justifyContent: "center" }} onClick={() => setSubModal(true)}>
-        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span> Добавить подвстречу
-      </button>
+          {meeting.sub_meetings?.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text3)", marginBottom: 8 }}>Подвстречи ({meeting.sub_meetings.length})</div>
+              {meeting.sub_meetings.map((s: Meeting) => (
+                <div key={s.id} style={{ padding: "10px 12px", background: "var(--bg3)", borderRadius: 8, marginBottom: 6, fontSize: 12 }}>
+                  <div style={{ fontWeight: 500, color: "var(--text)" }}>{s.client_name}</div>
+                  <div style={{ color: "var(--text3)", marginTop: 2 }}>{fmtDatetime(s.meeting_date)} · {s.address || "—"}</div>
+                  <span className="status-chip" style={{ background: MEETING_STATUS[s.status].bg, color: MEETING_STATUS[s.status].color, marginTop: 4 }}>{MEETING_STATUS[s.status].label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button className="btn btn-ghost" style={{ marginTop: 14, width: "100%", justifyContent: "center" }} onClick={() => setSubModal(true)}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span> Добавить подвстречу
+          </button>
+        </>
+      )}
 
       <MeetingModal open={subModal} onClose={() => setSubModal(false)} onSaved={() => { setSubModal(false); onSaved(); onClose(); }}
         closers={closers} defaultDate={new Date(meeting.meeting_date)} />

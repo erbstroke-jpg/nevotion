@@ -67,9 +67,16 @@ def list_tasks(
 
         personal_tasks = q.filter(Task.board_id == board_id).order_by(Task.position, Task.id).all()
 
-        # For personal boards, also include backend_queue tasks where the board owner is an assignee
+        # For personal boards, also include backend_queue tasks where the board owner is an assignee.
+        # Map their column_id to a valid personal-board column so the frontend can render them.
         if board.kind == "personal" and board.owner_id:
+            from app.schemas import TaskOut as TaskOutSchema
+
             owner_id = board.owner_id
+            sorted_cols = sorted(board.columns, key=lambda c: c.position)
+            todo_col_id = next((c.id for c in sorted_cols if not c.is_done), sorted_cols[0].id if sorted_cols else None)
+            done_col_id = next((c.id for c in sorted_cols if c.is_done), todo_col_id)
+
             queue_boards = db.query(Board).filter(Board.kind == "backend_queue").all()
             queue_board_ids = [b.id for b in queue_boards]
             if queue_board_ids:
@@ -80,8 +87,13 @@ def list_tasks(
                     .all()
                 )
                 for t in queue_tasks:
-                    if t.assignee_ids and owner_id in t.assignee_ids:
-                        personal_tasks.append(t)
+                    if not (t.assignee_ids and owner_id in t.assignee_ids):
+                        continue
+                    # Build a Pydantic copy so we don't mutate the DB object.
+                    # Override column_id to point at a real personal-board column.
+                    out = TaskOutSchema.model_validate(t)
+                    out.column_id = done_col_id if t.completed_at else todo_col_id
+                    personal_tasks.append(out)
 
         return personal_tasks
 
