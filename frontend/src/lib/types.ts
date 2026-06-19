@@ -35,10 +35,30 @@ export interface Department {
   embed_url: string;
 }
 
+export type BotColor = "red" | "yellow" | "blue" | "green";
+
+export const BOT_SUB_STATUSES = [
+  "Сбор информации",
+  "Разработка",
+  "Тест",
+  "Сдан",
+] as const;
+
+export const BOT_COLORS: Record<BotColor, { label: string; color: string; bg: string }> = {
+  red:    { label: "Проблемный",      color: "#e03b3b", bg: "rgba(224,59,59,0.12)" },
+  yellow: { label: "В разработке",    color: "#ca8a04", bg: "rgba(202,138,4,0.12)" },
+  blue:   { label: "Заморожен",       color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
+  green:  { label: "Всё отлично",     color: "#16a34a", bg: "rgba(22,163,74,0.12)" },
+};
+
 export interface Server {
   id: number;
   company: string;
   status: ServerStatus;
+  sub_status: string | null;
+  price: number;
+  color: BotColor;
+  bot_comment: string;
   connected_at: string | null;
   notes: string;
   owner_id: number | null;

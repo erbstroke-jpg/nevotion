@@ -35,8 +35,9 @@ function DateRangeFilter({ from, to, onFrom, onTo, onReset }: {
 }
 
 // ============================= SETTERS TABLE =============================
-function SettersSection({ dept, departments, isAdmin, currentUserId }: {
+function SettersSection({ dept, departments, isAdmin, currentUserId, onOpenMeetings }: {
   dept: Department; departments: Department[]; isAdmin: boolean; currentUserId?: number;
+  onOpenMeetings?: (u?: UserWithStats) => void;
 }) {
   const toast = useToast();
   const [users, setUsers] = useState<UserWithStats[]>([]);
@@ -52,7 +53,6 @@ function SettersSection({ dept, departments, isAdmin, currentUserId }: {
   const [editingRec, setEditingRec] = useState<SalesRecord | null>(null);
   const [userModal, setUserModal] = useState(false);
   const [colModal, setColModal] = useState(false);
-  const [setterPanel, setSetterPanel] = useState<UserWithStats | null>(null);
 
   const loadRecords = useCallback(async (off = 0) => {
     const r = await api.salesRecords({
@@ -78,7 +78,7 @@ function SettersSection({ dept, departments, isAdmin, currentUserId }: {
           {isAdmin && <button className="btn btn-ghost" onClick={() => setColModal(true)}><span className="material-symbols-outlined" style={{ fontSize: 16 }}>view_column</span> Колонки</button>}
           {isAdmin && <button className="btn btn-ghost" onClick={() => setUserModal(true)}><span className="material-symbols-outlined" style={{ fontSize: 16 }}>person_add</span></button>}
           {currentUserId && setters.find((u) => u.id === currentUserId) && (
-            <button className="btn btn-ghost" onClick={() => setSetterPanel(setters.find((u) => u.id === currentUserId)!)}>
+            <button className="btn btn-ghost" onClick={() => onOpenMeetings?.(setters.find((u) => u.id === currentUserId))}>
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>calendar_month</span> Мои встречи
             </button>
           )}
@@ -114,7 +114,7 @@ function SettersSection({ dept, departments, isAdmin, currentUserId }: {
                         if (isAdmin || r.user_id === currentUserId) {
                           e.stopPropagation();
                           const u = setters.find((s) => s.id === r.user_id);
-                          if (u) setSetterPanel(u);
+                          onOpenMeetings?.(u);
                         }
                       }}
                       title={(isAdmin || r.user_id === currentUserId) ? "Посмотреть встречи" : undefined}
@@ -145,9 +145,6 @@ function SettersSection({ dept, departments, isAdmin, currentUserId }: {
         columns={columns} addFn={api.addSalesColumn} delFn={api.deleteSalesColumn} reorderFn={api.reorderSalesColumn} />
       <UserModal open={userModal} onClose={() => setUserModal(false)} onSaved={() => api.listUsers(dept.id).then(setUsers)}
         user={null} departments={departments} defaultDeptId={dept.id} />
-      {setterPanel && (
-        <SetterMeetingsModal setter={setterPanel} onClose={() => setSetterPanel(null)} />
-      )}
     </div>
   );
 }
@@ -382,128 +379,220 @@ function SummarySection() {
 export function SalesDepartmentView({ dept, departments }: { dept: Department; departments: Department[] }) {
   const { isAdmin, user } = useApp();
   const [currentUser, setCurrentUser] = useState<UserWithStats | undefined>();
+  const [allUsers, setAllUsers] = useState<UserWithStats[]>([]);
+  const [meetingsModal, setMeetingsModal] = useState(false);
+  const [meetingsInitUser, setMeetingsInitUser] = useState<UserWithStats | null>(null);
+
   useEffect(() => { if (user) api.getUser(user.id).then(setCurrentUser).catch(() => {}); }, [user]);
+  useEffect(() => { api.listUsers(dept.id).then(setAllUsers).catch(() => {}); }, [dept.id]);
+
+  function openMeetings(u?: UserWithStats) {
+    setMeetingsInitUser(u ?? null);
+    setMeetingsModal(true);
+  }
 
   return (
     <div>
-      <div className="page-head"><div className="page-h1">Отдел продаж</div></div>
-      <SettersSection dept={dept} departments={departments} isAdmin={isAdmin} currentUserId={user?.id} />
+      <div className="page-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="page-h1">Отдел продаж</div>
+        <button className="btn btn-ghost" onClick={() => openMeetings()}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>table_view</span> Встречи
+        </button>
+      </div>
+      <SettersSection dept={dept} departments={departments} isAdmin={isAdmin} currentUserId={user?.id}
+        onOpenMeetings={openMeetings} />
       <MeetingsCalendar dept={dept} departments={departments} isAdmin={isAdmin} currentUser={currentUser} />
       <SummarySection />
+      {meetingsModal && (
+        <MeetingsTableModal
+          onClose={() => { setMeetingsModal(false); setMeetingsInitUser(null); }}
+          allUsers={allUsers}
+          initUser={meetingsInitUser}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+        />
+      )}
       <TableStyles />
     </div>
   );
 }
 
-// ============================= SETTER MEETINGS MODAL =============================
+// ============================= MEETINGS TABLE MODAL =============================
 const STATUS_KEYS_ALL: MeetingStatus[] = ["scheduled", "closed", "minus", "push", "rescheduled"];
 
 function periodRange(period: "day" | "week" | "month"): { from: string; to: string } {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  if (period === "day") {
-    const t = iso(now);
-    return { from: t, to: t };
-  }
+  if (period === "day") { const t = iso(now); return { from: t, to: t }; }
   if (period === "week") {
     const dow = now.getDay() === 0 ? 6 : now.getDay() - 1;
     const mon = new Date(now); mon.setDate(now.getDate() - dow);
     const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
     return { from: iso(mon), to: iso(sun) };
   }
-  // month
   return { from: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`, to: iso(now) };
 }
 
-function SetterMeetingsModal({ setter, onClose }: { setter: UserWithStats; onClose: () => void }) {
+function MeetingsTableModal({ onClose, allUsers, initUser, currentUser, isAdmin }: {
+  onClose: () => void;
+  allUsers: UserWithStats[];
+  initUser: UserWithStats | null;
+  currentUser: UserWithStats | undefined;
+  isAdmin: boolean;
+}) {
+  const setters = allUsers.filter((u) => u.position === "Сеттер" || u.position === "Руководитель продаж");
+  const closers = allUsers.filter((u) => u.position === "Клоузер");
+
+  // Filter state
   const [period, setPeriod] = useState<"day" | "week" | "month" | "custom">("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [filterStatus, setFilterStatus] = useState<MeetingStatus | "">("");
+  // role: "setter" | "closer" | "all"
+  const [filterRole, setFilterRole] = useState<"setter" | "closer" | "all">(() => {
+    if (!initUser) return "all";
+    const pos = initUser.position;
+    if (pos === "Клоузер") return "closer";
+    return "setter";
+  });
+  const [filterUserId, setFilterUserId] = useState<string>(() => initUser ? String(initUser.id) : "");
+
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
-  const LIMIT = 50;
+  const LIMIT = 100;
 
   const { from, to } = period === "custom"
     ? { from: customFrom, to: customTo }
     : periodRange(period);
 
+  // When role changes, clear user filter
+  function handleRoleChange(r: "setter" | "closer" | "all") {
+    setFilterRole(r);
+    setFilterUserId("");
+  }
+
+  const userListForRole = filterRole === "setter" ? setters : filterRole === "closer" ? closers : [];
+
   const load = useCallback(async (off = 0) => {
     setLoading(true);
     try {
-      const data = await meetingApi.list({
-        setter_id: setter.id,
+      const params: Parameters<typeof meetingApi.list>[0] = {
         date_from: from || undefined,
         date_to: to || undefined,
         limit: LIMIT,
         offset: off,
-      });
-      if (off === 0) setMeetings(data);
-      else setMeetings((prev) => [...prev, ...data]);
+      };
+      if (filterUserId) {
+        const uid = Number(filterUserId);
+        if (filterRole === "setter") params.setter_id = uid;
+        else if (filterRole === "closer") params.closer_id = uid;
+      }
+      const data = await meetingApi.list(params);
+      // client-side status filter
+      const filtered = filterStatus ? data.filter((m) => m.status === filterStatus) : data;
+      if (off === 0) setMeetings(filtered);
+      else setMeetings((prev) => [...prev, ...filtered]);
       setHasMore(data.length === LIMIT);
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [setter.id, from, to]);
+  }, [from, to, filterUserId, filterRole, filterStatus]);
 
   useEffect(() => { setOffset(0); load(0); }, [load]);
 
-  // ── per-status counts ──
   const counts: Record<MeetingStatus, number> = { scheduled: 0, closed: 0, minus: 0, push: 0, rescheduled: 0 };
   for (const m of meetings) counts[m.status] = (counts[m.status] ?? 0) + 1;
-  const total = meetings.length;
+
+  const titleName = initUser
+    ? `Встречи — ${initUser.name}`
+    : "Все встречи";
 
   return (
-    <Modal open onClose={onClose} title={`Встречи — ${setter.name}`} width={760}
+    <Modal open onClose={onClose} title={titleName} width={860}
       footer={<button className="btn btn-ghost" onClick={onClose}>Закрыть</button>}>
 
-      {/* ── Period selector ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {(["day", "week", "month", "custom"] as const).map((p) => (
-          <button key={p} onClick={() => setPeriod(p)}
-            style={{
-              padding: "5px 14px", borderRadius: 6, border: "1px solid var(--border)",
-              background: period === p ? "var(--primary)" : "var(--bg2)",
-              color: period === p ? "#fff" : "var(--text2)",
-              fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
-            }}>
-            {{ day: "День", week: "Неделя", month: "Месяц", custom: "Период" }[p]}
-          </button>
-        ))}
+      {/* ── Filters row ── */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {/* Period */}
+        <div style={{ display: "flex", gap: 4, background: "var(--bg3)", borderRadius: 8, padding: 3 }}>
+          {(["day", "week", "month", "custom"] as const).map((p) => (
+            <button key={p} onClick={() => setPeriod(p)}
+              style={{
+                padding: "4px 12px", borderRadius: 6, border: "none",
+                background: period === p ? "var(--bg2)" : "transparent",
+                boxShadow: period === p ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                color: period === p ? "var(--text)" : "var(--text3)",
+                fontSize: 12, fontWeight: period === p ? 600 : 400, cursor: "pointer", fontFamily: "inherit",
+              }}>
+              {{ day: "День", week: "Неделя", month: "Месяц", custom: "Период" }[p]}
+            </button>
+          ))}
+        </div>
         {period === "custom" && (
           <DateRangeFilter from={customFrom} to={customTo}
             onFrom={setCustomFrom} onTo={setCustomTo}
             onReset={() => { setCustomFrom(""); setCustomTo(""); }} />
         )}
+
+        {/* Role selector */}
+        <select className="field-select" style={{ width: "auto" }}
+          value={filterRole} onChange={(e) => handleRoleChange(e.target.value as any)}>
+          <option value="all">Все участники</option>
+          <option value="setter">По сеттеру</option>
+          <option value="closer">По клоузеру</option>
+        </select>
+
+        {/* User selector */}
+        {filterRole !== "all" && (
+          <select className="field-select" style={{ width: "auto" }}
+            value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)}>
+            <option value="">— Все —</option>
+            {userListForRole.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        )}
+
+        {/* Status filter */}
+        <select className="field-select" style={{ width: "auto" }}
+          value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)}>
+          <option value="">Все статусы</option>
+          {STATUS_KEYS_ALL.map((s) => <option key={s} value={s}>{MEETING_STATUS[s].label}</option>)}
+        </select>
       </div>
 
       {/* ── Stats cards ── */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
-        <div style={{ padding: "12px 18px", background: "var(--bg3)", borderRadius: 10, border: "1px solid var(--border)", minWidth: 90 }}>
-          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Всего</div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: "var(--text)", fontFamily: "JetBrains Mono, monospace" }}>{total}</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ padding: "10px 16px", background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)", minWidth: 80 }}>
+          <div style={{ fontSize: 10, color: "var(--text3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Всего</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", fontFamily: "JetBrains Mono, monospace" }}>{meetings.length}</div>
         </div>
         {STATUS_KEYS_ALL.map((s) => {
           const st = MEETING_STATUS[s];
           return (
-            <div key={s} style={{ padding: "12px 18px", background: st.bg, borderRadius: 10, border: `1px solid ${st.color}22`, minWidth: 90 }}>
-              <div style={{ fontSize: 11, color: st.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{st.label}</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: st.color, fontFamily: "JetBrains Mono, monospace" }}>{counts[s]}</div>
+            <div key={s} onClick={() => setFilterStatus(filterStatus === s ? "" : s)}
+              style={{
+                padding: "10px 16px", background: st.bg, borderRadius: 8,
+                border: `1.5px solid ${filterStatus === s ? st.color : st.color + "33"}`,
+                minWidth: 80, cursor: "pointer", transition: "border-color 0.15s",
+              }}>
+              <div style={{ fontSize: 10, color: st.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>{st.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: st.color, fontFamily: "JetBrains Mono, monospace" }}>{counts[s]}</div>
             </div>
           );
         })}
       </div>
 
-      {/* ── Meetings table ── */}
+      {/* ── Table ── */}
       <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table className="data-table">
-            <thead>
+        <div style={{ overflowX: "auto", maxHeight: 460, overflowY: "auto" }}>
+          <table className="data-table" style={{ position: "relative" }}>
+            <thead style={{ position: "sticky", top: 0, zIndex: 1, background: "var(--bg3)" }}>
               <tr>
                 <th>Дата</th>
                 <th>Клиент</th>
                 <th>Телефон</th>
+                <th>Сеттер</th>
                 <th>Клоузер</th>
                 <th>Статус</th>
                 <th>Адрес</th>
@@ -519,33 +608,26 @@ function SetterMeetingsModal({ setter, onClose }: { setter: UserWithStats; onClo
                     </td>
                     <td style={{ fontWeight: 500 }}>{m.client_name}</td>
                     <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--text2)" }}>{m.client_phone || "—"}</td>
-                    <td>{m.closer?.name ?? "—"}</td>
+                    <td style={{ fontSize: 12, color: "var(--text2)" }}>{m.setter?.name ?? "—"}</td>
+                    <td style={{ fontSize: 12, color: "var(--text2)" }}>{m.closer?.name ?? "—"}</td>
                     <td>
-                      <span className="status-chip" style={{ background: st.bg, color: st.color }}>
-                        {st.label}
-                      </span>
+                      <span className="status-chip" style={{ background: st.bg, color: st.color }}>{st.label}</span>
                     </td>
                     <td style={{ color: "var(--text3)", fontSize: 12 }}>{m.address || "—"}</td>
                   </tr>
                 );
               })}
               {!loading && meetings.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ textAlign: "center", color: "var(--text3)", padding: "30px 20px" }}>
-                    Нет встреч за выбранный период
-                  </td>
-                </tr>
+                <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text3)", padding: "30px 20px" }}>Нет встреч</td></tr>
               )}
             </tbody>
           </table>
         </div>
-        {loading && (
-          <div style={{ padding: "14px 20px", textAlign: "center", fontSize: 13, color: "var(--text3)" }}>Загрузка…</div>
-        )}
+        {loading && <div style={{ padding: "14px 20px", textAlign: "center", fontSize: 13, color: "var(--text3)" }}>Загрузка…</div>}
         {hasMore && !loading && (
-          <button className="load-more-btn" onClick={() => {
-            const n = offset + LIMIT; setOffset(n); load(n);
-          }}>Загрузить ещё</button>
+          <button className="load-more-btn" onClick={() => { const n = offset + LIMIT; setOffset(n); load(n); }}>
+            Загрузить ещё
+          </button>
         )}
       </div>
     </Modal>

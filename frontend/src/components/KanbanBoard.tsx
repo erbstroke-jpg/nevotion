@@ -217,7 +217,9 @@ export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChan
   };
 
   const sharedBoard = board.kind === "backend_queue" || board.kind === "qcc";
-  const canMoveTask = (t: Task) => isAdmin || sharedBoard || t.owner_id === user?.id;
+  // Allow: admin | shared board | task owner | board owner (backend devs own their personal board)
+  const canMoveTask = (t: Task) =>
+    isAdmin || sharedBoard || t.owner_id === user?.id || board.owner_id === user?.id;
   const doneColIds = new Set(board.columns.filter((c) => c.is_done).map((c) => c.id));
   const cols = [...board.columns].sort((a, b) => a.position - b.position);
 

@@ -7,13 +7,23 @@ import { BoardView } from "@/components/BoardView";
 import { UserModal } from "@/components/UserModal";
 import { ServerModal } from "@/components/ServerModal";
 import { useApp } from "@/context/AppContext";
+import { useToast } from "@/context/ToastContext";
 import { api } from "@/lib/api";
 import {
   Department, UserWithStats, Server, Board, STATUS_LABELS, ServerStatus,
+  BOT_COLORS, BOT_SUB_STATUSES, BotColor,
 } from "@/lib/types";
+
+// Helper: compute total salary for a prompter from their servers
+function calcSalary(servers: Server[], userId: number): number {
+  return servers
+    .filter((s) => s.owner_id === userId)
+    .reduce((sum, s) => sum + (s.price || (s.status === "support" ? 1000 : 0)), 0);
+}
 
 export function DevDepartmentView({ dept, departments }: { dept: Department; departments: Department[] }) {
   const { isAdmin, user: currentUser } = useApp();
+  const toast = useToast();
   const router = useRouter();
   const [users, setUsers] = useState<UserWithStats[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
@@ -51,6 +61,13 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
     return `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()}`;
   };
 
+  async function quickUpdateBot(id: number, patch: Partial<Server>) {
+    try {
+      await api.updateServer(id, patch);
+      load();
+    } catch (e: any) { toast(e.message, "error"); }
+  }
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 22 }}>
@@ -85,24 +102,42 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
       {/* Prompt engineers */}
       <SectionLabel style={{ marginTop: 34 }}>Промпт-инженеры</SectionLabel>
       <div className="prompters-grid">
-        {prompters.map((u) => (
-          <div key={u.id} className="prompter-card card" onClick={() => router.push(`/team/${u.id}`)}>
-            <div className="pc-head">
-              <Avatar name={u.name} color={u.avatar_color} size={40} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="pc-name">{u.name}{u.position === "Тимлид" && <span className="pill">Тимлид</span>}</div>
-                <div className="pc-role">{u.position}</div>
+        {prompters.map((u) => {
+          const salary = calcSalary(servers, u.id);
+          return (
+            <div key={u.id} className="prompter-card card" onClick={() => router.push(`/team/${u.id}`)}>
+              <div className="pc-head">
+                <Avatar name={u.name} color={u.avatar_color} size={40} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="pc-name">{u.name}{u.position === "Тимлид" && <span className="pill">Тимлид</span>}</div>
+                  <div className="pc-role">{u.position}</div>
+                </div>
+                <span className="sdot-inline" style={{ background: u.is_online ? "var(--green)" : "var(--text3)" }} />
               </div>
-              <span className="sdot-inline" style={{ background: u.is_online ? "var(--green)" : "var(--text3)" }} />
+
+              {/* Salary badge */}
+              {salary > 0 && (
+                <div style={{
+                  margin: "10px 0 0", padding: "8px 12px", background: "var(--bg2)",
+                  borderRadius: 8, border: "1px solid var(--border)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <span style={{ fontSize: 11, color: "var(--text3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Зарплата</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "var(--green)", fontFamily: "JetBrains Mono, monospace" }}>
+                    {salary.toLocaleString("ru-RU")} сом
+                  </span>
+                </div>
+              )}
+
+              <div className="pc-divider" />
+              <div className="pc-stats">
+                <Stat v={u.total_bots} l="Всего ботов" />
+                <Stat v={u.new_bots} l="Новых" c="var(--primary)" />
+                <Stat v={u.support_bots} l="Тех" c="var(--orange)" />
+              </div>
             </div>
-            <div className="pc-divider" />
-            <div className="pc-stats">
-              <Stat v={u.total_bots} l="Всего ботов" />
-              <Stat v={u.new_bots} l="Новых" c="var(--primary)" />
-              <Stat v={u.support_bots} l="Тех" c="var(--orange)" />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Server List */}
@@ -114,53 +149,103 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <div className={`chip ${prompterFilter === null ? "active" : ""}`} onClick={() => setFilter(null)}>Все ({servers.length})</div>
-        {[...users.filter((u) => u.position === "Промпт-инженер" || u.position === "Тимлид")].map((u) => {
+        {prompters.map((u) => {
           const cnt = servers.filter((sv) => sv.owner_id === u.id).length;
-          return <div key={u.id} className={`chip ${prompterFilter === u.id ? "active" : ""}`} onClick={() => setFilter(u.id === prompterFilter ? null : u.id)}>{u.name} ({cnt})</div>;
+          const sal = calcSalary(servers, u.id);
+          return (
+            <div key={u.id} className={`chip ${prompterFilter === u.id ? "active" : ""}`}
+              onClick={() => setFilter(u.id === prompterFilter ? null : u.id)}>
+              {u.name} ({cnt}){sal > 0 && <span style={{ marginLeft: 6, fontSize: 10, fontFamily: "JetBrains Mono, monospace", color: "var(--green)" }}>{sal.toLocaleString("ru-RU")} с</span>}
+            </div>
+          );
         })}
       </div>
-      <div className="card" style={{ overflow: "hidden" }}><div style={{ overflowX: "auto" }}>
-        <table className="data-table">
-          <thead>
-            <tr><th>Компания</th><th>Статус</th><th>Дата подключения</th><th>Промптер</th><th></th></tr>
-          </thead>
-          <tbody>
-            {visibleServers.map((s) => (
-              <tr key={s.id}>
-                <td style={{ color: "var(--text)", fontWeight: 500 }}>{s.company}</td>
-                <td><StatusBadge status={s.status} /></td>
-                <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>{fmtDate(s.connected_at)}</td>
-                <td>{s.owner ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                    <Avatar name={s.owner.name} color={s.owner.avatar_color} size={22} /> {s.owner.name}
-                  </span>) : <span style={{ color: "var(--text3)" }}>—</span>}
-                </td>
-                {(isAdmin || s.owner_id === currentUser?.id) && (
-                  <td style={{ width: 70 }}>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <button className="row-act" onClick={() => { setEditingServer(s); setServerModal(true); }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 17 }}>edit</span>
-                      </button>
-                      {isAdmin && (
-                        <button className="row-act" onClick={async () => { if (confirm(`Удалить «${s.company}»?`)) { await api.deleteServer(s.id); load(); } }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 17 }}>delete</span>
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                )}
+
+      <div className="card" style={{ overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: 8 }}></th>
+                <th>Компания</th>
+                <th>Статус</th>
+                <th>Подстатус</th>
+                <th style={{ textAlign: "right" }}>Цена</th>
+                <th>Дата подключения</th>
+                <th>Промптер</th>
+                <th>Комментарий</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {hasMoreServers && (
-          <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
-            <button className="btn btn-ghost" style={{ width: "100%", fontSize: 12 }}
-              onClick={() => setServerPage(p => p + 1)}>
-              Загрузить ещё ({filteredServers.length - visibleServers.length})
-            </button>
-          </div>
-        )}
+            </thead>
+            <tbody>
+              {visibleServers.map((s) => {
+                const col = BOT_COLORS[s.color as BotColor] ?? BOT_COLORS.green;
+                return (
+                  <tr key={s.id}>
+                    {/* Color dot */}
+                    <td style={{ padding: "0 0 0 14px" }}>
+                      <span title={col.label} style={{
+                        display: "inline-block", width: 10, height: 10, borderRadius: "50%",
+                        background: col.color, flexShrink: 0,
+                      }} />
+                    </td>
+                    <td style={{ color: "var(--text)", fontWeight: 500 }}>{s.company}</td>
+                    <td><StatusBadge status={s.status} /></td>
+                    <td>
+                      {s.status === "new" && s.sub_status ? (
+                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 5,
+                          background: "var(--bg3)", color: "var(--text2)", border: "1px solid var(--border)" }}>
+                          {s.sub_status}
+                        </span>
+                      ) : <span style={{ color: "var(--text3)" }}>—</span>}
+                    </td>
+                    <td style={{ textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--green)", fontWeight: 600 }}>
+                      {s.price > 0 ? `${s.price.toLocaleString("ru-RU")}` : "—"}
+                    </td>
+                    <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>{fmtDate(s.connected_at)}</td>
+                    <td>
+                      {s.owner ? (
+                        <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <Avatar name={s.owner.name} color={s.owner.avatar_color} size={22} /> {s.owner.name}
+                        </span>
+                      ) : <span style={{ color: "var(--text3)" }}>—</span>}
+                    </td>
+                    <td style={{ maxWidth: 180 }}>
+                      <span style={{ fontSize: 12, color: "var(--text3)", display: "-webkit-box",
+                        WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                        {s.bot_comment || "—"}
+                      </span>
+                    </td>
+                    {(isAdmin || s.owner_id === currentUser?.id) && (
+                      <td style={{ width: 70 }}>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button className="row-act" onClick={() => { setEditingServer(s); setServerModal(true); }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 17 }}>edit</span>
+                          </button>
+                          {isAdmin && (
+                            <button className="row-act" onClick={async () => {
+                              if (confirm(`Удалить «${s.company}»?`)) { await api.deleteServer(s.id); load(); }
+                            }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 17 }}>delete</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {hasMoreServers && (
+            <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
+              <button className="btn btn-ghost" style={{ width: "100%", fontSize: 12 }}
+                onClick={() => setServerPage(p => p + 1)}>
+                Загрузить ещё ({filteredServers.length - visibleServers.length})
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Backend queue */}
@@ -168,7 +253,6 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
       <div className="page-desc" style={{ marginBottom: 16 }}>Промптеры ставят задачи бэкендерам · колонки и карточки редактируемы</div>
       {backendBoard && <BoardView boardId={backendBoard.id} />}
 
-      </div>
       <UserModal open={userModal} onClose={() => setUserModal(false)} onSaved={load} user={null} departments={departments} defaultDeptId={dept.id} />
       <ServerModal open={serverModal} onClose={() => setServerModal(false)} onSaved={load} server={editingServer} users={users} />
 
@@ -191,7 +275,7 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
         .pc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
         .pc-val { font-size: 22px; font-weight: 700; font-family: "JetBrains Mono", monospace; color: var(--text); line-height: 1; }
         .pc-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 5px; }
-        .chip { padding: 6px 13px; border-radius: 20px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); background: var(--bg2); color: var(--text2); transition: all 0.13s; }
+        .chip { padding: 6px 13px; border-radius: 20px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); background: var(--bg2); color: var(--text2); transition: all 0.13s; display: inline-flex; align-items: center; }
         .chip:hover { border-color: var(--primary); color: var(--primary); }
         .chip.active { background: var(--primary-dim); border-color: var(--primary); color: var(--primary); font-weight: 500; }
         .data-table { width: 100%; border-collapse: collapse; }

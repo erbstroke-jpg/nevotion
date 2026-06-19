@@ -76,6 +76,11 @@ class Server(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     company: Mapped[str] = mapped_column(String(160), nullable=False)
     status: Mapped[ServerStatus] = mapped_column(Enum(ServerStatus), default=ServerStatus.new)
+    # Sub-status for "new" bots: "Сбор информации" | "Разработка" | "Тест" | "Сдан"
+    sub_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    price: Mapped[int] = mapped_column(Integer, default=0)        # salary contribution
+    color: Mapped[str] = mapped_column(String(20), default="green")  # red|yellow|blue|green
+    bot_comment: Mapped[str] = mapped_column(Text, default="")
     connected_at: Mapped[date] = mapped_column(Date, default=date.today)
     notes: Mapped[str] = mapped_column(String(500), default="")
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

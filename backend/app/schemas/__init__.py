@@ -82,6 +82,10 @@ class DepartmentUpdate(BaseModel):
 class ServerBase(BaseModel):
     company: str
     status: ServerStatus = ServerStatus.new
+    sub_status: Optional[str] = None
+    price: int = 0
+    color: str = "green"
+    bot_comment: str = ""
     connected_at: Optional[date] = None
     notes: str = ""
     owner_id: Optional[int] = None
@@ -94,6 +98,10 @@ class ServerCreate(ServerBase):
 class ServerUpdate(BaseModel):
     company: Optional[str] = None
     status: Optional[ServerStatus] = None
+    sub_status: Optional[str] = None
+    price: Optional[int] = None
+    color: Optional[str] = None
+    bot_comment: Optional[str] = None
     connected_at: Optional[date] = None
     notes: Optional[str] = None
     owner_id: Optional[int] = None
