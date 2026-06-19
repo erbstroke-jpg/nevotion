@@ -170,9 +170,11 @@ export const bugApi = {
 
 // meetings
 export const meetingApi = {
-  list: (f?: { closer_id?: number; year?: number; month?: number; date_from?: string; date_to?: string; offset?: number; limit?: number }) => {
+  list: (f?: { closer_id?: number; setter_id?: number; year?: number; month?: number; date_from?: string; date_to?: string; offset?: number; limit?: number; parent_only?: boolean }) => {
     const p = new URLSearchParams();
     if (f?.closer_id) p.set("closer_id", String(f.closer_id));
+    if (f?.setter_id) p.set("setter_id", String(f.setter_id));
+    if (f?.parent_only === false) p.set("parent_only", "false");
     if (f?.year)   p.set("year",   String(f.year));
     if (f?.month)  p.set("month",  String(f.month));
     if (f?.date_from) p.set("date_from", f.date_from);

@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   closestCenter, DragStartEvent, DragEndEvent, useDroppable,
-  UniqueIdentifier,
+  UniqueIdentifier, CollisionDetection,
 } from "@dnd-kit/core";
 import {
   SortableContext, useSortable, verticalListSortingStrategy,
@@ -144,6 +144,12 @@ function Column({ col, tasks, canMoveTask, onCardClick, onAdd, canEdit, onEditCo
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: col.color, flexShrink: 0 }} />
         <span className="kcol-name">{col.name}</span>
         <span className="kcol-count">{tasks.length}</span>
+        <button className="kcol-edit"
+          onClick={(e) => { e.stopPropagation(); onAdd(col.id); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          title="Добавить задачу">
+          <span className="material-symbols-outlined" style={{ fontSize: 15 }}>add</span>
+        </button>
         {canEdit && (
           <button className="kcol-edit"
             onClick={(e) => { e.stopPropagation(); onEditCol(col); }}
@@ -193,6 +199,22 @@ export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChan
     const b = tasks.map((t) => `${t.id}:${t.column_id}`).join();
     if (a !== b) setTasks(initialTasks);
   }
+
+  // Custom collision: when dragging a column only match col-* droppables;
+  // when dragging a task use closestCenter restricted to tasks + colbody droppables.
+  const collisionDetection: CollisionDetection = (args) => {
+    const activeId = args.active.id;
+    if (typeof activeId === "string" && activeId.startsWith("col-")) {
+      const colDroppables = args.droppableContainers.filter(
+        (c) => typeof c.id === "string" && (c.id as string).startsWith("col-"),
+      );
+      return closestCenter({ ...args, droppableContainers: colDroppables });
+    }
+    const taskDroppables = args.droppableContainers.filter(
+      (c) => typeof c.id === "number" || (typeof c.id === "string" && (c.id as string).startsWith("colbody-")),
+    );
+    return closestCenter({ ...args, droppableContainers: taskDroppables });
+  };
 
   const sharedBoard = board.kind === "backend_queue" || board.kind === "qcc";
   const canMoveTask = (t: Task) => isAdmin || sharedBoard || t.owner_id === user?.id;
@@ -276,7 +298,7 @@ export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChan
   const activeCol = isColDrag ? cols.find((c) => c.id === Number(String(activeId).slice(4))) : null;
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleStart} onDragEnd={handleEnd}>
+    <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleStart} onDragEnd={handleEnd}>
       <SortableContext items={cols.map((c) => `col-${c.id}`)} strategy={horizontalListSortingStrategy}>
         <div style={{ overflowX: "auto", paddingBottom: 16 }}>
           <div style={{ display: "flex", gap: 14, minWidth: "max-content", alignItems: "flex-start" }}>

@@ -77,6 +77,7 @@ def _load(db: Session, meeting_id: int) -> Meeting:
 @router.get("", response_model=list[MeetingOut])
 def list_meetings(
     closer_id: Optional[int] = Query(None),
+    setter_id: Optional[int] = Query(None),
     year:  Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     date_from: Optional[str] = Query(None),
@@ -95,6 +96,8 @@ def list_meetings(
         q = q.filter(Meeting.parent_id.is_(None))
     if closer_id:
         q = q.filter(Meeting.closer_id == closer_id)
+    if setter_id:
+        q = q.filter(Meeting.setter_id == setter_id)
     if year and month:
         from sqlalchemy import extract
         q = q.filter(
