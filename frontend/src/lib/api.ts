@@ -96,7 +96,10 @@ export const api = {
   deleteColumn: (colId: number) => request<void>(`/boards/columns/${colId}`, { method: "DELETE" }),
 
   // tasks
-  listTasks: (boardId: number) => request<Task[]>(`/tasks?board_id=${boardId}`),
+  listTasks: (boardId: number, assigneeId?: number) => {
+    const qs = assigneeId ? `&assignee_id=${assigneeId}` : "";
+    return request<Task[]>(`/tasks?board_id=${boardId}${qs}`);
+  },
   createTask: (data: any) => request<Task>("/tasks", { method: "POST", body: JSON.stringify(data) }),
   updateTask: (id: number, data: any) => request<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   moveTask: (id: number, column_id: number, position: number) =>

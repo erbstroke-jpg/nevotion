@@ -17,11 +17,14 @@ export default function TrackerPage() {
   const router = useRouter();
   const toast = useToast();
   const userId = Number(params.id);
+
   const [member, setMember] = useState<UserWithStats | null>(null);
-  const [board, setBoard] = useState<Board | null>(null);
+  const [personalBoard, setPersonalBoard] = useState<Board | null>(null);
+  const [backendQueueBoard, setBackendQueueBoard] = useState<Board | null>(null);
   const [bots, setBots] = useState<Server[]>([]);
 
   const isPrompter = member?.position === "Промпт-инженер" || member?.position === "Тимлид";
+  const isBackender = member?.position === "Бэкенд" || member?.position === "Главный тех лид";
 
   const loadBots = useCallback(() => {
     if (isPrompter) {
@@ -31,8 +34,21 @@ export default function TrackerPage() {
 
   useEffect(() => {
     api.getUser(userId).then(setMember).catch(() => {});
-    api.getPersonalBoard(userId).then(setBoard).catch(() => {});
+    api.getPersonalBoard(userId).then(setPersonalBoard).catch(() => {});
   }, [userId]);
+
+  // Load backend_queue board for backenders so they can interact with their assigned tasks
+  useEffect(() => {
+    if (!isBackender) return;
+    // Find the dev department and its backend_queue board
+    api.listDepartments().then(async (depts) => {
+      const dev = depts.find((d) => d.kind === "dev");
+      if (!dev) return;
+      const boards = await api.boardsForDepartment(dev.id).catch(() => [] as Board[]);
+      const bqBoard = boards.find((b) => b.kind === "backend_queue");
+      if (bqBoard) setBackendQueueBoard(bqBoard);
+    }).catch(() => {});
+  }, [isBackender]);
 
   useEffect(() => { loadBots(); }, [loadBots]);
 
@@ -102,7 +118,6 @@ export default function TrackerPage() {
                     const col = BOT_COLORS[bot.color as BotColor] ?? BOT_COLORS.green;
                     return (
                       <tr key={bot.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                        {/* Color picker inline */}
                         <td style={{ padding: "10px 14px", width: 120 }}>
                           <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
                             {COLOR_OPTIONS.map((c) => {
@@ -177,7 +192,23 @@ export default function TrackerPage() {
         </div>
       )}
 
-      {board && <BoardView boardId={board.id} lockOwnerId={userId} />}
+      {/* Personal board */}
+      {personalBoard && (
+        <BoardView boardId={personalBoard.id} lockOwnerId={userId} />
+      )}
+
+      {/* Backend queue tasks assigned to this user — shown as a real board with real columns */}
+      {isBackender && backendQueueBoard && (
+        <div style={{ marginTop: 32 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text3)", marginBottom: 6 }}>
+            Задачи с общей доски бэкенда
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 14 }}>
+            Задачи, назначенные на вас — можно двигать и редактировать
+          </div>
+          <BoardView boardId={backendQueueBoard.id} filterAssigneeId={userId} />
+        </div>
+      )}
     </Shell>
   );
 }

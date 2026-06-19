@@ -54,6 +54,7 @@ def _apply_done_logic(db: Session, task: Task):
 @router.get("", response_model=list[TaskOut])
 def list_tasks(
     board_id: Optional[int] = Query(None),
+    assignee_id: Optional[int] = Query(None),  # filter by user in assignee_ids
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -64,38 +65,12 @@ def list_tasks(
             raise HTTPException(404, "Доска не найдена")
         if not _can_view_board(user, board, db):
             raise HTTPException(403, "Нет доступа")
+        q = q.filter(Task.board_id == board_id)
 
-        personal_tasks = q.filter(Task.board_id == board_id).order_by(Task.position, Task.id).all()
-
-        # For personal boards, also include backend_queue tasks where the board owner is an assignee.
-        # Map their column_id to a valid personal-board column so the frontend can render them.
-        if board.kind == "personal" and board.owner_id:
-            from app.schemas import TaskOut as TaskOutSchema
-
-            owner_id = board.owner_id
-            sorted_cols = sorted(board.columns, key=lambda c: c.position)
-            todo_col_id = next((c.id for c in sorted_cols if not c.is_done), sorted_cols[0].id if sorted_cols else None)
-            done_col_id = next((c.id for c in sorted_cols if c.is_done), todo_col_id)
-
-            queue_boards = db.query(Board).filter(Board.kind == "backend_queue").all()
-            queue_board_ids = [b.id for b in queue_boards]
-            if queue_board_ids:
-                queue_tasks = (
-                    db.query(Task)
-                    .options(joinedload(Task.owner), joinedload(Task.requester))
-                    .filter(Task.board_id.in_(queue_board_ids))
-                    .all()
-                )
-                for t in queue_tasks:
-                    if not (t.assignee_ids and owner_id in t.assignee_ids):
-                        continue
-                    # Build a Pydantic copy so we don't mutate the DB object.
-                    # Override column_id to point at a real personal-board column.
-                    out = TaskOutSchema.model_validate(t)
-                    out.column_id = done_col_id if t.completed_at else todo_col_id
-                    personal_tasks.append(out)
-
-        return personal_tasks
+    if assignee_id:
+        # JSON contains filter — works for PostgreSQL and SQLite
+        from sqlalchemy import cast, String
+        q = q.filter(Task.assignee_ids.cast(String).contains(str(assignee_id)))
 
     return q.order_by(Task.position, Task.id).all()
 

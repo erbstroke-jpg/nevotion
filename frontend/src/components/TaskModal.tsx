@@ -25,8 +25,6 @@ export function TaskModal({
   const toast = useToast();
   const isBackendQueue = board.kind === "backend_queue";
   const isShared = board.kind === "backend_queue" || board.kind === "qcc";
-  // Cross-board: task belongs to backend_queue but is shown on a personal board
-  const isCrossBoard = !!(task && task.board_id !== board.id);
 
   const [form, setForm] = useState<any>({
     title: "", tag: "Задача", tag_color: "indigo", priority: "med",
@@ -84,14 +82,12 @@ export function TaskModal({
     try {
       const payload: any = {
         title: form.title, description: form.description, tag: form.tag, tag_color: form.tag_color, priority: form.priority,
-        due_date: form.due_date || null,
+        due_date: form.due_date || null, column_id: form.column_id,
         owner_id: form.owner_id ? Number(form.owner_id) : null,
         task_type: form.task_type,
         requester_id: form.requester_id ? Number(form.requester_id) : null,
         assignee_ids: form.assignee_ids,
       };
-      // For cross-board tasks, never send column_id — the column belongs to a different board
-      if (!isCrossBoard) payload.column_id = form.column_id;
       if (task) await api.updateTask(task.id, payload);
       else await api.createTask({ ...payload, board_id: board.id });
       initialFormRef.current = JSON.stringify(form);
@@ -157,21 +153,13 @@ export function TaskModal({
         </div>
       </div>
 
-      {isCrossBoard && (
-        <div style={{ padding: "8px 12px", background: "var(--primary-dim)", borderRadius: 8, marginBottom: 4, fontSize: 12, color: "var(--primary)", display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 15 }}>info</span>
-          Задача с общей доски бэкенда · перетащите карточку в нужную колонку чтобы изменить статус
-        </div>
-      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        {!isCrossBoard && (
-          <div className="field">
-            <label className="field-label">Колонка</label>
-            <select className="field-select" value={form.column_id ?? ""} onChange={(e) => setForm({ ...form, column_id: Number(e.target.value) })}>
-              {cols.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-        )}
+        <div className="field">
+          <label className="field-label">Колонка</label>
+          <select className="field-select" value={form.column_id ?? ""} onChange={(e) => setForm({ ...form, column_id: Number(e.target.value) })}>
+            {cols.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
         <div className="field">
           <label className="field-label">Приоритет</label>
           <select className="field-select" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
