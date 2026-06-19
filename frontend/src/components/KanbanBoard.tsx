@@ -217,13 +217,13 @@ export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChan
   };
 
   const sharedBoard = board.kind === "backend_queue" || board.kind === "qcc";
-  // Cross-board virtual tasks (backend_queue tasks shown on personal board) must never be dragged:
-  // their board_id doesn't match this board, so the backend would reject the column validation.
-  const canMoveTask = (t: Task) => {
-    if (t.board_id !== board.id) return false; // virtual cross-board task — read-only
-    return isAdmin || sharedBoard || t.owner_id === user?.id || board.owner_id === user?.id;
-  };
   const doneColIds = new Set(board.columns.filter((c) => c.is_done).map((c) => c.id));
+
+  // Cross-board tasks (backend_queue tasks shown on personal board) CAN be dragged —
+  // but we intercept the drop and call complete/uncomplete instead of moveTask.
+  const isCrossBoard = (t: Task) => t.board_id !== board.id;
+  const canMoveTask = (t: Task) =>
+    isAdmin || sharedBoard || t.owner_id === user?.id || board.owner_id === user?.id || isCrossBoard(t);
   const cols = [...board.columns].sort((a, b) => a.position - b.position);
 
   // Require 8px movement to distinguish click from drag
@@ -290,8 +290,22 @@ export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChan
 
     const prev = tasks;
     setTasks((ts) => ts.map((t) => (t.id === taskId ? { ...t, column_id: newColId } : t)));
+
     try {
-      await api.moveTask(taskId, newColId, targetPosition);
+      // Cross-board task (backend_queue task on personal board):
+      // translate drop to complete / uncomplete — never send a foreign column_id.
+      if (isCrossBoard(task)) {
+        const targetIsDone = doneColIds.has(newColId);
+        if (targetIsDone && !task.completed_at) {
+          await api.completeTask(taskId);
+        } else if (!targetIsDone && task.completed_at) {
+          // un-complete: clear completed_at without changing the real column
+          await api.updateTask(taskId, { completed_at: null });
+        }
+        // same-state drop → no-op (optimistic update already applied)
+      } else {
+        await api.moveTask(taskId, newColId, targetPosition);
+      }
       onChange?.();
     } catch {
       setTasks(prev);
