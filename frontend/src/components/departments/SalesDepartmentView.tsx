@@ -295,7 +295,9 @@ function MeetingsCalendar({ dept, departments, isAdmin, currentUser }: {
 
       {/* Detail/edit modal */}
       {selectedMeeting && (
-        <MeetingDetailModal open={detailModal} onClose={() => setDetailModal(false)} onSaved={() => { load(); }}
+        <MeetingDetailModal open={detailModal} onClose={() => setDetailModal(false)}
+          onSaved={() => { load(); }}
+          onDeleted={() => { setDetailModal(false); setSelectedMeeting(null); load(); }}
           meeting={selectedMeeting} closers={closers} currentUser={currentUser} isAdmin={isAdmin}
           onStatusChange={changeStatus} />
       )}
@@ -462,6 +464,7 @@ function MeetingsTableModal({ onClose, allUsers, initUser, currentUser, isAdmin 
   const [loading, setLoading] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const LIMIT = 100;
 
   const { from, to } = period === "custom"
@@ -602,11 +605,12 @@ function MeetingsTableModal({ onClose, allUsers, initUser, currentUser, isAdmin 
               {meetings.map((m) => {
                 const st = MEETING_STATUS[m.status];
                 return (
-                  <tr key={m.id}>
+                  <tr key={m.id} onClick={() => setSelectedMeeting(m)}
+                    style={{ cursor: "pointer" }}>
                     <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, whiteSpace: "nowrap" }}>
                       {fmtDatetime(m.meeting_date)}
                     </td>
-                    <td style={{ fontWeight: 500 }}>{m.client_name}</td>
+                    <td style={{ fontWeight: 500, color: "var(--text)" }}>{m.client_name}</td>
                     <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--text2)" }}>{m.client_phone || "—"}</td>
                     <td style={{ fontSize: 12, color: "var(--text2)" }}>{m.setter?.name ?? "—"}</td>
                     <td style={{ fontSize: 12, color: "var(--text2)" }}>{m.closer?.name ?? "—"}</td>
@@ -630,6 +634,32 @@ function MeetingsTableModal({ onClose, allUsers, initUser, currentUser, isAdmin 
           </button>
         )}
       </div>
+
+      {selectedMeeting && (
+        <MeetingDetailModal
+          open
+          onClose={() => setSelectedMeeting(null)}
+          onSaved={async () => {
+            // Refresh the opened meeting data
+            const updated = await meetingApi.get(selectedMeeting.id).catch(() => null);
+            if (updated) setSelectedMeeting(updated);
+            load(0);
+          }}
+          onDeleted={() => { setSelectedMeeting(null); load(0); }}
+          meeting={selectedMeeting}
+          closers={closers}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+          onStatusChange={async (m: Meeting, s: MeetingStatus) => {
+            try {
+              await meetingApi.setStatus(m.id, s);
+              const updated = await meetingApi.get(m.id);
+              setSelectedMeeting(updated);
+              load(0);
+            } catch { /* ignore */ }
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -693,17 +723,31 @@ function MeetingModal({ open, onClose, onSaved, closers, defaultDate }: {
   );
 }
 
-function MeetingDetailModal({ open, onClose, onSaved, meeting, closers, currentUser, isAdmin, onStatusChange }: any) {
+function MeetingDetailModal({ open, onClose, onSaved, meeting, closers, currentUser, isAdmin, onStatusChange, onDeleted }: any) {
   const toast = useToast();
   const st = MEETING_STATUS[meeting.status as MeetingStatus];
   const [subModal, setSubModal] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const canChangeStatus = isAdmin || meeting.closer_id === currentUser?.id;
   const canEdit = isAdmin || currentUser?.position === "Сеттер" || currentUser?.position === "Руководитель продаж";
+  const canDelete = isAdmin || meeting.setter_id === currentUser?.id;
   const STATUS_ACTIONS: MeetingStatus[] = ["closed","minus","push","rescheduled"];
+
+  async function handleDelete() {
+    if (!confirm(`Удалить встречу с «${meeting.client_name}»?`)) return;
+    setDeleting(true);
+    try {
+      await meetingApi.delete(meeting.id);
+      toast("Встреча удалена");
+      onClose();
+      onDeleted?.();
+    } catch (e: any) { toast(e.message, "error"); }
+    finally { setDeleting(false); }
+  }
 
   useEffect(() => {
     if (editMode) {
@@ -734,7 +778,12 @@ function MeetingDetailModal({ open, onClose, onSaved, meeting, closers, currentU
       footer={
         editMode
           ? <><button className="btn btn-ghost" onClick={() => setEditMode(false)}>Отмена</button><button className="btn btn-primary" onClick={saveEdit} disabled={saving}>Сохранить</button></>
-          : <div style={{ display: "flex", gap: 8, width: "100%", justifyContent: "space-between" }}>
+          : <div style={{ display: "flex", gap: 8, width: "100%", alignItems: "center" }}>
+              {canDelete && (
+                <button className="btn btn-ghost" style={{ color: "var(--red)" }} onClick={handleDelete} disabled={deleting}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span> Удалить
+                </button>
+              )}
               {canEdit && <button className="btn btn-ghost" onClick={() => setEditMode(true)}><span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit</span> Редактировать</button>}
               <button className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={onClose}>Закрыть</button>
             </div>

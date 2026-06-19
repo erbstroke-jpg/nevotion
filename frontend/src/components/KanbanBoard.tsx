@@ -217,9 +217,12 @@ export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChan
   };
 
   const sharedBoard = board.kind === "backend_queue" || board.kind === "qcc";
-  // Allow: admin | shared board | task owner | board owner (backend devs own their personal board)
-  const canMoveTask = (t: Task) =>
-    isAdmin || sharedBoard || t.owner_id === user?.id || board.owner_id === user?.id;
+  // Cross-board virtual tasks (backend_queue tasks shown on personal board) must never be dragged:
+  // their board_id doesn't match this board, so the backend would reject the column validation.
+  const canMoveTask = (t: Task) => {
+    if (t.board_id !== board.id) return false; // virtual cross-board task — read-only
+    return isAdmin || sharedBoard || t.owner_id === user?.id || board.owner_id === user?.id;
+  };
   const doneColIds = new Set(board.columns.filter((c) => c.is_done).map((c) => c.id));
   const cols = [...board.columns].sort((a, b) => a.position - b.position);
 
