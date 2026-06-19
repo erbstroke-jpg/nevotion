@@ -179,7 +179,7 @@ function Column({ col, tasks, canMoveTask, onCardClick, onAdd, canEdit, onEditCo
   );
 }
 
-export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChange, onCardClick, onAddTask, onEditColumn, onAddColumn }: {
+export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChange, onCardClick, onAddTask, onEditColumn, onAddColumn, extraBoards }: {
   board: Board;
   tasks: Task[];
   canEditColumns: boolean;
@@ -188,6 +188,7 @@ export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChan
   onAddTask?: (colId: number) => void;
   onEditColumn?: (c: BoardColumn) => void;
   onAddColumn?: () => void;
+  extraBoards?: Map<number, Board>;
 }) {
   const { user, isAdmin } = useApp();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
@@ -292,17 +293,41 @@ export function KanbanBoard({ board, tasks: initialTasks, canEditColumns, onChan
     setTasks((ts) => ts.map((t) => (t.id === taskId ? { ...t, column_id: newColId } : t)));
 
     try {
-      // Cross-board task (backend_queue task on personal board):
-      // translate drop to complete / uncomplete — never send a foreign column_id.
       if (isCrossBoard(task)) {
+        // Cross-board task: find the matching column on the ACTUAL board (e.g. backend_queue)
+        // and move there. Map by is_done flag + relative position among same-done-class columns.
+        const actualBoard = extraBoards?.get(task.board_id);
         const targetIsDone = doneColIds.has(newColId);
-        if (targetIsDone && !task.completed_at) {
-          await api.completeTask(taskId);
-        } else if (!targetIsDone && task.completed_at) {
-          // un-complete: clear completed_at without changing the real column
-          await api.updateTask(taskId, { completed_at: null });
+
+        if (actualBoard) {
+          const actualCols = [...actualBoard.columns].sort((a, b) => a.position - b.position);
+
+          let actualColId: number | null = null;
+          if (targetIsDone) {
+            // Move to the first done column on the actual board
+            actualColId = actualCols.find((c) => c.is_done)?.id ?? null;
+          } else {
+            // Map by relative position among non-done columns
+            const personalNonDone = cols.filter((c) => !c.is_done);
+            const actualNonDone = actualCols.filter((c) => !c.is_done);
+            const idx = personalNonDone.findIndex((c) => c.id === newColId);
+            const clampedIdx = Math.min(Math.max(idx, 0), actualNonDone.length - 1);
+            actualColId = actualNonDone[clampedIdx]?.id ?? null;
+          }
+
+          if (actualColId !== null) {
+            await api.moveTask(taskId, actualColId, targetPosition);
+          } else if (targetIsDone) {
+            await api.completeTask(taskId);
+          }
+        } else {
+          // No extra board loaded — fall back to complete/uncomplete
+          if (targetIsDone && !task.completed_at) {
+            await api.completeTask(taskId);
+          } else if (!targetIsDone && task.completed_at) {
+            await api.updateTask(taskId, { completed_at: null });
+          }
         }
-        // same-state drop → no-op (optimistic update already applied)
       } else {
         await api.moveTask(taskId, newColId, targetPosition);
       }

@@ -14,6 +14,8 @@ export function BoardView({ boardId, lockOwnerId }: { boardId: number; lockOwner
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<UserWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  // Map of boardId → Board for cross-board tasks (e.g. backend_queue tasks on personal board)
+  const [extraBoards, setExtraBoards] = useState<Map<number, Board>>(new Map());
 
   const [taskModal, setTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -22,21 +24,36 @@ export function BoardView({ boardId, lockOwnerId }: { boardId: number; lockOwner
   const [colModal, setColModal] = useState(false);
   const [editingCol, setEditingCol] = useState<BoardColumn | null>(null);
 
-  const loadBoard = useCallback(() => {
-    api.getBoard(boardId).then(setBoard).catch(() => {});
-    api.listTasks(boardId).then(setTasks).catch(() => {});
+  const loadBoard = useCallback(async () => {
+    const [b, ts] = await Promise.all([
+      api.getBoard(boardId).catch(() => null),
+      api.listTasks(boardId).catch(() => [] as Task[]),
+    ]);
+    if (b) setBoard(b);
+    setTasks(ts);
+
+    // Detect cross-board tasks and load their actual boards
+    const foreignBoardIds = [...new Set(ts.filter((t) => t.board_id !== boardId).map((t) => t.board_id))];
+    if (foreignBoardIds.length > 0) {
+      const entries = await Promise.all(
+        foreignBoardIds.map((id) => api.getBoard(id).then((fb) => [id, fb] as [number, Board]).catch(() => null))
+      );
+      const map = new Map<number, Board>();
+      for (const e of entries) if (e) map.set(e[0], e[1]);
+      setExtraBoards(map);
+    } else {
+      setExtraBoards(new Map());
+    }
   }, [boardId]);
 
   useEffect(() => {
-    loadBoard();
+    loadBoard().finally(() => setLoading(false));
     api.listUsers().then(setUsers).catch(() => {});
-    setLoading(false);
   }, [loadBoard]);
 
   if (loading || !board) return <div style={{ color: "var(--text3)" }}>Загрузка…</div>;
 
   const sharedBoard = board.kind === "backend_queue" || board.kind === "qcc";
-  // who can edit columns: admin, or owner of personal board, or anyone on shared boards
   const canEditColumns = isAdmin || sharedBoard || (board.kind === "personal" && board.owner_id === user?.id) || (board.kind === "founder" && !!user?.is_founder);
   const canAddTask = canEditColumns;
 
@@ -50,6 +67,7 @@ export function BoardView({ boardId, lockOwnerId }: { boardId: number; lockOwner
       <KanbanBoard
         board={board}
         tasks={tasks}
+        extraBoards={extraBoards}
         canEditColumns={canEditColumns}
         onChange={loadBoard}
         onCardClick={openEditTask}
