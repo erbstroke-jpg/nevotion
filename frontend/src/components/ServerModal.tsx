@@ -23,7 +23,7 @@ export function ServerModal({ open, onClose, onSaved, server, users }: {
   const [form, setForm] = useState({
     company: "", status: "new", sub_status: "",
     price: "", color: "green" as BotColor,
-    bot_comment: "", owner_id: "", connected_at: "", notes: "",
+    bot_comment: "", owner_id: "", connected_at: "", delivered_at: "", notes: "",
   });
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -40,6 +40,7 @@ export function ServerModal({ open, onClose, onSaved, server, users }: {
         bot_comment: server.bot_comment ?? "",
         owner_id: server.owner_id ? String(server.owner_id) : "",
         connected_at: server.connected_at ?? "",
+        delivered_at: server.delivered_at ?? "",
         notes: server.notes ?? "",
       });
     } else {
@@ -47,7 +48,7 @@ export function ServerModal({ open, onClose, onSaved, server, users }: {
         company: "", status: "new", sub_status: "",
         price: "", color: "green",
         bot_comment: "", owner_id: "",
-        connected_at: new Date().toISOString().slice(0, 10), notes: "",
+        connected_at: new Date().toISOString().slice(0, 10), delivered_at: "", notes: "",
       });
     }
   }, [open, server]);
@@ -75,11 +76,12 @@ export function ServerModal({ open, onClose, onSaved, server, users }: {
         bot_comment: form.bot_comment,
         owner_id: form.owner_id ? Number(form.owner_id) : null,
         connected_at: form.connected_at || null,
+        delivered_at: form.delivered_at || null,
         notes: form.notes,
       };
       if (server) await api.updateServer(server.id, payload);
       else await api.createServer(payload);
-      onClose(); onSaved(); toast(server ? "Бот обновлён" : "Бот добавлен");
+      onClose(); onSaved(); toast(server ? "Проект обновлён" : "Проект добавлен");
     } catch (e: any) { toast(e.message, "error"); }
     finally { setSaving(false); }
   }
@@ -87,7 +89,7 @@ export function ServerModal({ open, onClose, onSaved, server, users }: {
   const c = BOT_COLORS[form.color as BotColor] ?? BOT_COLORS.green;
 
   return (
-    <Modal open={open} onClose={onClose} title={server ? "Изменить бота" : "Добавить бота"} width={460}
+    <Modal open={open} onClose={onClose} title={server ? "Изменить проект" : "Добавить проект"} width={460}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
@@ -96,7 +98,7 @@ export function ServerModal({ open, onClose, onSaved, server, users }: {
       }>
 
       <div className="field">
-        <label className="field-label">Компания</label>
+        <label className="field-label">Название проекта / компания</label>
         <input className="field-input" value={form.company} autoFocus
           onChange={(e) => setForm({ ...form, company: e.target.value })}
           placeholder="Например, Эл Суши" />
@@ -117,13 +119,21 @@ export function ServerModal({ open, onClose, onSaved, server, users }: {
       </div>
 
       {form.status === "new" && (
-        <div className="field">
-          <label className="field-label">Подстатус</label>
-          <select className="field-select" value={form.sub_status}
-            onChange={(e) => setForm({ ...form, sub_status: e.target.value })}>
-            <option value="">— не указан —</option>
-            {BOT_SUB_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="field">
+            <label className="field-label">Подстатус</label>
+            <select className="field-select" value={form.sub_status}
+              onChange={(e) => setForm({ ...form, sub_status: e.target.value })}>
+              <option value="">— не указан —</option>
+              {BOT_SUB_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label className="field-label">Дата сдачи</label>
+            <input className="field-input" type="date" value={form.delivered_at}
+              onChange={(e) => setForm({ ...form, delivered_at: e.target.value })}
+              placeholder="авто при выборе «Сдан»" />
+          </div>
         </div>
       )}
 

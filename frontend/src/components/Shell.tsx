@@ -12,12 +12,41 @@ const NAV_MAIN = [
   { href: "/dashboard", icon: "grid_view", label: "Главная" },
 ];
 
+// Departments rendered as collapsible sections in sidebar
+const SALES_SLUG = "sales";
+const FINANCE_SLUG = "finance";
+
+const SALES_SUBNAV = [
+  { href: "/leads",    icon: "contacts",      label: "Лиды" },
+  { href: "/funnel",   icon: "filter_alt",    label: "Воронка продаж" },
+  { href: "/dept/sales/meetings", icon: "handshake", label: "Встречи" },
+  { href: "/dept/sales", icon: "bar_chart",   label: "Дневник" },
+];
+
+const FINANCE_SUBNAV = [
+  { href: "/finance",      icon: "account_balance_wallet", label: "Финансы" },
+  { href: "/dept/finance", icon: "table_chart",    label: "Таблица (Sheets)" },
+  { href: "/salaries",     icon: "payments",        label: "Зарплаты" },
+];
+
+const ANALYTICS_NAV = [
+  { href: "/analytics", icon: "analytics",   label: "Аналитика" },
+  { href: "/kpi",       icon: "leaderboard", label: "KPI" },
+  { href: "/reports",   icon: "summarize",   label: "Отчёты" },
+];
+
+// Slugs to hide from the generic department list (handled separately)
+const HIDDEN_DEPT_SLUGS = new Set([SALES_SLUG, FINANCE_SLUG]);
+
 export function Shell({ children, title }: { children: React.ReactNode; title?: string }) {
   const { user, loading, isAdmin, isFounder, theme, toggleTheme, logout } = useApp();
   const [departments, setDepartments] = useState<Department[]>([]);
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const [salesOpen, setSalesOpen] = useState(false);
+  const [financeOpen, setFinanceOpen] = useState(false);
 
   // Search state
   const [searchQ, setSearchQ] = useState("");
@@ -27,7 +56,6 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
   const searchTimer = useRef<any>(null);
 
   const [bugCount, setBugCount] = useState(0);
-  // Notifications state
   const [notifs, setNotifs] = useState<{ count: number; items: any[] }>({ count: 0, items: [] });
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -44,7 +72,12 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
     }
   }, [user]);
 
-  // Live search with debounce
+  // Auto-open collapsible sections when on sub-routes
+  useEffect(() => {
+    if (SALES_SUBNAV.some((n) => pathname.startsWith(n.href))) setSalesOpen(true);
+    if (FINANCE_SUBNAV.some((n) => pathname.startsWith(n.href))) setFinanceOpen(true);
+  }, [pathname]);
+
   useEffect(() => {
     clearTimeout(searchTimer.current);
     if (searchQ.trim().length < 2) { setSearchResults(null); setSearchOpen(false); return; }
@@ -58,7 +91,6 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
     return () => clearTimeout(searchTimer.current);
   }, [searchQ]);
 
-  // Close dropdowns on outside click
   useEffect(() => {
     function handle(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
@@ -78,12 +110,19 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
   function handleSearchSelect(item: any) {
     setSearchOpen(false); setSearchQ("");
     if (item.type === "user") router.push(`/team/${item.id}`);
-    else if (item.type === "server") router.push("/dept/dev");
+    else if (item.type === "project") router.push("/dept/dev");
     else if (item.type === "task") {
       if (item.owner_id) router.push(`/team/${item.owner_id}`);
-      else router.push("/dept/dev"); // backend queue or QCC task without owner
+      else router.push("/dept/dev");
     }
   }
+
+  // Departments not handled by special sections
+  const genericDepts = departments.filter((d) => !d.admin_only && !HIDDEN_DEPT_SLUGS.has(d.slug));
+  const adminDepts = departments.filter((d) => d.admin_only);
+
+  const hasSales = departments.some((d) => d.slug === SALES_SLUG);
+  const hasFinance = departments.some((d) => d.slug === FINANCE_SLUG);
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -95,6 +134,7 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
         </div>
 
         <nav className="sidebar-nav">
+          {/* ── Рабочая область ── */}
           <div className="nav-group">
             <div className="nav-group-label">Рабочая область</div>
             {NAV_MAIN.map((item) => (
@@ -118,18 +158,73 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
             </Link>
           </div>
 
-          {departments.filter((d) => !d.admin_only).length > 0 && (
-            <div className="nav-group">
-              <div className="nav-group-label">Отделы</div>
-              {departments.filter((d) => !d.admin_only).map((d) => (
-                <Link key={d.id} href={`/dept/${d.slug}`} className={`nav-link ${pathname === `/dept/${d.slug}` ? "active" : ""}`}>
-                  <span className="material-symbols-outlined nav-ico">{d.icon}</span>
-                  <span>{d.name}</span>
-                </Link>
-              ))}
-            </div>
-          )}
+          {/* ── Отделы ── */}
+          <div className="nav-group">
+            <div className="nav-group-label">Отделы</div>
 
+            {/* Отдел продаж — collapsible */}
+            {hasSales && (
+              <>
+                <button className={`nav-link nav-collapsible ${salesOpen ? "expanded" : ""}`} onClick={() => setSalesOpen((v) => !v)}>
+                  <span className="material-symbols-outlined nav-ico">payments</span>
+                  <span style={{ flex: 1 }}>Отдел продаж</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, transition: "transform 0.2s", transform: salesOpen ? "rotate(180deg)" : "none" }}>expand_more</span>
+                </button>
+                {salesOpen && (
+                  <div className="nav-sub">
+                    {SALES_SUBNAV.map((item) => (
+                      <Link key={item.href} href={item.href} className={`nav-link nav-sub-link ${pathname.startsWith(item.href) ? "active" : ""}`}>
+                        <span className="material-symbols-outlined nav-ico">{item.icon}</span>
+                        <span>{item.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Отдел финансов — collapsible */}
+            {hasFinance && (
+              <>
+                <button className={`nav-link nav-collapsible ${financeOpen ? "expanded" : ""}`} onClick={() => setFinanceOpen((v) => !v)}>
+                  <span className="material-symbols-outlined nav-ico">account_balance</span>
+                  <span style={{ flex: 1 }}>Отдел финансов</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, transition: "transform 0.2s", transform: financeOpen ? "rotate(180deg)" : "none" }}>expand_more</span>
+                </button>
+                {financeOpen && (
+                  <div className="nav-sub">
+                    {FINANCE_SUBNAV.map((item) => (
+                      <Link key={item.href} href={item.href} className={`nav-link nav-sub-link ${pathname.startsWith(item.href) ? "active" : ""}`}>
+                        <span className="material-symbols-outlined nav-ico">{item.icon}</span>
+                        <span>{item.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Other non-admin departments (excluding sales & finance) */}
+            {genericDepts.map((d) => (
+              <Link key={d.id} href={`/dept/${d.slug}`} className={`nav-link ${pathname === `/dept/${d.slug}` ? "active" : ""}`}>
+                <span className="material-symbols-outlined nav-ico">{d.icon}</span>
+                <span>{d.name}</span>
+              </Link>
+            ))}
+          </div>
+
+          {/* ── Аналитика ── */}
+          <div className="nav-group">
+            <div className="nav-group-label">Аналитика</div>
+            {ANALYTICS_NAV.map((item) => (
+              <Link key={item.href} href={item.href} className={`nav-link ${pathname.startsWith(item.href) ? "active" : ""}`}>
+                <span className="material-symbols-outlined nav-ico">{item.icon}</span>
+                <span>{item.label}</span>
+              </Link>
+            ))}
+          </div>
+
+          {/* ── Администрирование ── */}
           {(isFounder || isAdmin) && (
             <div className="nav-group">
               <div className="nav-group-label">Администрирование</div>
@@ -137,7 +232,13 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
                 <span className="material-symbols-outlined nav-ico">group</span>
                 <span>Сотрудники</span>
               </Link>
-              {departments.filter((d) => d.admin_only).map((d) => (
+              {isAdmin && (
+                <Link href="/admin/settings" className={`nav-link ${pathname.startsWith("/admin/settings") ? "active" : ""}`}>
+                  <span className="material-symbols-outlined nav-ico">settings</span>
+                  <span>Настройки</span>
+                </Link>
+              )}
+              {adminDepts.map((d) => (
                 <Link key={d.id} href={`/dept/${d.slug}`} className={`nav-link ${pathname === `/dept/${d.slug}` ? "active" : ""}`}>
                   <span className="material-symbols-outlined nav-ico">{d.icon}</span>
                   <span>{d.name}</span>
@@ -190,7 +291,7 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
               </div>
               {searchOpen && searchResults && (
                 <div className="search-dropdown">
-                  {searchResults.users.length === 0 && searchResults.servers.length === 0 && searchResults.tasks.length === 0 ? (
+                  {searchResults.users.length === 0 && (searchResults.projects ?? []).length === 0 && searchResults.tasks.length === 0 ? (
                     <div className="search-empty">Ничего не найдено</div>
                   ) : (
                     <>
@@ -205,13 +306,13 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
                           ))}
                         </div>
                       )}
-                      {searchResults.servers.length > 0 && (
+                      {(searchResults.projects ?? []).length > 0 && (
                         <div className="search-section">
-                          <div className="search-section-label">Боты</div>
-                          {searchResults.servers.map((s: any) => (
-                            <div key={s.id} className="search-item" onClick={() => handleSearchSelect(s)}>
+                          <div className="search-section-label">Проекты</div>
+                          {(searchResults.projects ?? []).map((p: any) => (
+                            <div key={p.id} className="search-item" onClick={() => handleSearchSelect(p)}>
                               <span className="material-symbols-outlined si-ico">smart_toy</span>
-                              <div><div className="si-title">{s.company}</div><div className="si-meta">{s.status === "new" ? "Новый бот" : "Тех поддержка"}</div></div>
+                              <div><div className="si-title">{p.company}</div><div className="si-meta">{p.status === "new" ? "Новый проект" : "Тех поддержка"}</div></div>
                             </div>
                           ))}
                         </div>
@@ -252,19 +353,39 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
                   {notifs.items.length === 0 ? (
                     <div className="search-empty">Всё в порядке 👍</div>
                   ) : (
-                    <div style={{ maxHeight: 360, overflowY: "auto" }}>
-                      {notifs.items.map((n) => (
-                        <div key={n.id} className={`notif-item notif-${n.kind}`}
-                          onClick={() => { setNotifOpen(false); if (n.owner_id) router.push(`/team/${n.owner_id}`); }}>
-                          <span className="material-symbols-outlined notif-ico">
-                            {n.kind === "overdue" ? "warning" : "assignment"}
-                          </span>
-                          <div>
-                            <div className="notif-title">{n.title}</div>
-                            <div className="notif-meta">{n.meta}</div>
+                    <div style={{ maxHeight: 400, overflowY: "auto" }}>
+                      {notifs.items.map((n) => {
+                        const iconMap: Record<string, string> = {
+                          overdue: "warning",
+                          assigned: "assignment",
+                          meeting_today: "event_available",
+                          meeting: "calendar_month",
+                          lead_overdue: "schedule",
+                          lead_warning: "person_search",
+                          payment_overdue: "payments",
+                          deal_paid: "check_circle",
+                          meeting_minus: "do_not_disturb_on",
+                          cashflow: "trending_down",
+                        };
+                        const icon = iconMap[n.kind] ?? "notifications";
+                        const color = n.severity === "critical" ? "var(--red)"
+                          : n.severity === "warning" ? "var(--orange)"
+                          : "var(--primary)";
+                        return (
+                          <div key={n.id} className={`notif-item notif-${n.kind}`}
+                            onClick={() => {
+                              setNotifOpen(false);
+                              if (n.link) router.push(n.link);
+                              else if (n.owner_id) router.push(`/team/${n.owner_id}`);
+                            }}>
+                            <span className="material-symbols-outlined notif-ico" style={{ color }}>{icon}</span>
+                            <div>
+                              <div className="notif-title">{n.title}</div>
+                              {n.meta && <div className="notif-meta">{n.meta}</div>}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -285,14 +406,15 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
           .sidebar.sidebar-open { transform: translateX(0); }
           .hamburger { display: flex; align-items: center; justify-content: center; }
           .content { padding: 16px !important; }
-          .topbar { padding: 0 16px !important; }
+          .topbar { padding: 0 12px !important; gap: 8px !important; }
+          .topbar-title { font-size: 14px !important; }
           .kcol { width: 260px !important; }
-          .stat-row { grid-template-columns: 1fr !important; }
+          .stat-row { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
           .dash-grid { grid-template-columns: 1fr !important; }
           .backend-row { grid-template-columns: 1fr !important; }
           .prompters-grid { grid-template-columns: 1fr !important; }
-          .search-box input { width: 100px !important; }
-          .search-dropdown, .notif-dropdown { width: 280px !important; right: -60px; }
+          .data-table th, .data-table td { padding: 10px 12px !important; font-size: 12px !important; }
+          .page-h1 { font-size: 20px !important; }
         }
         .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 20px 16px 16px; }
         .brand-logo { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, var(--primary), #6063ee); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 16px; flex-shrink: 0; }
@@ -301,9 +423,12 @@ export function Shell({ children, title }: { children: React.ReactNode; title?: 
         .sidebar-nav { flex: 1; overflow-y: auto; padding: 12px 8px; }
         .nav-group { margin-bottom: 20px; }
         .nav-group-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sidebar-text2); padding: 0 10px; margin-bottom: 6px; }
-        .nav-link { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 6px; margin-bottom: 2px; color: var(--sidebar-text); text-decoration: none; font-size: 14px; font-weight: 400; transition: all 0.13s; }
+        .nav-link { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 6px; margin-bottom: 2px; color: var(--sidebar-text); text-decoration: none; font-size: 14px; font-weight: 400; transition: all 0.13s; width: 100%; box-sizing: border-box; background: none; border: none; cursor: pointer; font-family: inherit; }
         .nav-link:hover { background: var(--sidebar-hover); color: #e8e8f0; }
         .nav-link.active { background: var(--primary); color: #fff; font-weight: 500; }
+        .nav-collapsible { text-align: left; }
+        .nav-sub { padding-left: 8px; }
+        .nav-sub-link { font-size: 13px; padding: 6px 10px; }
         .nav-ico { font-size: 20px; flex-shrink: 0; }
         .sidebar-foot { padding: 12px 12px 16px; border-top: 1px solid rgba(255,255,255,0.06); }
         .foot-user-row { display: flex; align-items: center; gap: 8px; }

@@ -11,9 +11,11 @@ from app.core.config import settings
 from app.core.database import Base, engine
 from app.middleware import last_seen_middleware
 from app.routers import (
-    auth, users, servers, tasks, departments, boards, sales, marketing,
-    search, notifications, meetings, bug_reports,
+    auth, users, projects, tasks, departments, boards, sales, marketing,
+    search, notifications, meetings, bug_reports, leads, finance, payroll, analytics,
+    api_keys,
 )
+from app.routers import settings as settings_router
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -48,7 +50,7 @@ app.middleware('http')(last_seen_middleware)
 
 app.include_router(auth.router)
 app.include_router(users.router)
-app.include_router(servers.router)
+app.include_router(projects.router)
 app.include_router(boards.router)
 app.include_router(tasks.router)
 app.include_router(departments.router)
@@ -58,6 +60,12 @@ app.include_router(search.router)
 app.include_router(notifications.router)
 app.include_router(meetings.router)
 app.include_router(bug_reports.router)
+app.include_router(settings_router.router)
+app.include_router(leads.router)
+app.include_router(finance.router)
+app.include_router(payroll.router)
+app.include_router(analytics.router)
+app.include_router(api_keys.router)
 
 
 @app.get("/api/health")

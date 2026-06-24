@@ -6,19 +6,19 @@ import { Shell } from "@/components/Shell";
 import { Avatar } from "@/components/Avatar";
 import { useApp } from "@/context/AppContext";
 import { api } from "@/lib/api";
-import type { UserWithStats, Server, Department } from "@/lib/types";
+import type { UserWithStats, Project, Department } from "@/lib/types";
 
 export default function DashboardPage() {
   const { user } = useApp();
   const router = useRouter();
   const [users, setUsers] = useState<UserWithStats[]>([]);
-  const [servers, setServers] = useState<Server[]>([]);
+  const [servers, setServers] = useState<Project[]>([]);
   const [depts, setDepts] = useState<Department[]>([]);
 
   useEffect(() => {
     if (!user) return;
     api.listUsers().then(setUsers).catch(() => {});
-    api.listServers().then(setServers).catch(() => {});
+    api.listProjects().then(setServers).catch(() => {});
     api.listDepartments().then(setDepts).catch(() => {});
   }, [user]);
 

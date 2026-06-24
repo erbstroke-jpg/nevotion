@@ -4,12 +4,77 @@ from datetime import date, timedelta, datetime, timezone
 from app.core.database import SessionLocal, engine, Base
 from app.core.security import hash_password
 from app.models import (
-    User, Server, Board, BoardColumn, Task, Department, ColumnDef,
+    User, Project, Board, BoardColumn, Task, Department, ColumnDef,
     SalesRecord, MarketingRecord, Meeting, MeetingStatus,
-    Role, ServerStatus, Priority,
+    Role, ProjectStatus, Priority,
+    LeadSource, Service, LeadStage, RejectReason, ExpenseCategory, Account,
+    Lead, LeadStageHistory, LeadActivity, LeadStatus,
+    PayrollRule, FinanceTransaction, AdExpense, MonthlyPlan, DevPayrollConfig,
 )
 
 DEFAULT_COLS = [("To-do", "#767586", False), ("In progress", "#4648d4", False), ("Done", "#16a34a", True)]
+
+
+def seed_lookups():
+    """Fill CRM lookup tables. Safe to call multiple times (idempotent)."""
+    db = SessionLocal()
+    try:
+        def _fill(model, rows, extra=None):
+            for i, name in enumerate(rows):
+                if not db.query(model).filter_by(name=name).first():
+                    kwargs = {"name": name, "position": i}
+                    if extra and name in extra:
+                        kwargs.update(extra[name])
+                    db.add(model(**kwargs))
+            db.commit()
+
+        _fill(LeadSource, [
+            "Instagram", "Facebook", "WhatsApp",
+            "Сарафан", "Повторный клиент", "Другое",
+        ])
+
+        _fill(Service, [
+            "AI чат-бот", "Сайт", "Интернет-магазин",
+            "CRM", "Автоматизация", "Другое",
+        ])
+
+        stages = [
+            ("Новый лид",        {}),
+            ("Демо-тест",        {}),
+            ("Созвон",           {}),
+            ("Встреча",          {}),
+            ("Договор",          {}),
+            ("Ожидание оплаты",  {}),
+            ("Оплачено",         {"is_won": True,  "color": "#16a34a"}),
+            ("Разработка",       {}),
+            ("Минус",            {"is_lost": True, "color": "#e03b3b"}),
+        ]
+        for i, (name, extra) in enumerate(stages):
+            if not db.query(LeadStage).filter_by(name=name).first():
+                db.add(LeadStage(name=name, position=i, **extra))
+        db.commit()
+
+        _fill(RejectReason, [
+            "Дорого", "Не сейчас", "Нет доверия", "Уже работают с кем-то",
+            "Не ЛПР", "Не понял продукт", "Нет бюджета", "Не квал",
+            "Нет времени", "Другое",
+        ])
+
+        _fill(ExpenseCategory, [
+            "ФОТ", "Бонусы", "Таргет", "Постоянные расходы",
+            "Прочие расходы", "Возвраты клиентам", "Погашение долгов",
+            "Дивиденды основателей", "Разработка", "Офисные расходы",
+        ])
+
+        account_rows = [
+            "Наличные", "Банк", "Карта", "MBank", "O!Bank", "Другое",
+        ]
+        for i, name in enumerate(account_rows):
+            if not db.query(Account).filter_by(name=name).first():
+                db.add(Account(name=name, currency="сом", position=i))
+        db.commit()
+    finally:
+        db.close()
 STAFF_PW = "Nevo2026!"
 
 
@@ -95,19 +160,19 @@ def seed():
     depts["qcc"].members      = [ahmad]
     db.flush()
 
-    # ===== Servers =====
-    servers_data = [
-        ("Эл Суши",        ServerStatus.new,     date(2026,1,15),  azamat),
-        ("ImaShop",        ServerStatus.support, date(2026,2,3),   ariet),
-        ("DAYAR-DOS",      ServerStatus.new,     date(2026,2,20),  ariet),
-        ("TOLKUN.KG",      ServerStatus.support, date(2026,3,10),  turat),
-        ("Usadba Orehovo", ServerStatus.new,     date(2026,4,1),   abdulla),
-        ("BuyStroy",       ServerStatus.support, date(2026,4,14),  emirlan),
-        ("PROFI Bishkek",  ServerStatus.new,     date(2026,4,22),  azamat),
-        ("Эл Суши 2",      ServerStatus.new,     date(2026,5,5),   turat),
+    # ===== Projects =====
+    projects_data = [
+        ("Эл Суши",        ProjectStatus.new,     date(2026,1,15),  azamat),
+        ("ImaShop",        ProjectStatus.support, date(2026,2,3),   ariet),
+        ("DAYAR-DOS",      ProjectStatus.new,     date(2026,2,20),  ariet),
+        ("TOLKUN.KG",      ProjectStatus.support, date(2026,3,10),  turat),
+        ("Usadba Orehovo", ProjectStatus.new,     date(2026,4,1),   abdulla),
+        ("BuyStroy",       ProjectStatus.support, date(2026,4,14),  emirlan),
+        ("PROFI Bishkek",  ProjectStatus.new,     date(2026,4,22),  azamat),
+        ("Эл Суши 2",      ProjectStatus.new,     date(2026,5,5),   turat),
     ]
-    for co, st, dt, owner in servers_data:
-        db.add(Server(company=co, status=st, connected_at=dt, owner_id=owner.id))
+    for co, st, dt, owner in projects_data:
+        db.add(Project(company=co, status=st, connected_at=dt, owner_id=owner.id))
     db.flush()
 
     # ===== Personal boards =====
@@ -194,6 +259,15 @@ def seed():
 
     db.commit()
     db.close()
+
+    # ===== CRM Lookups (idempotent) =====
+    seed_lookups()
+
+    # ===== Demo Leads (idempotent) =====
+    seed_leads()
+
+    # ===== Payroll rules + finance demo (idempotent) =====
+    seed_payroll_and_finance()
     print("✅ База заполнена.")
     print()
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -226,5 +300,220 @@ def seed():
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 
+def seed_leads():
+    """Add demo leads. Idempotent — checks by phone."""
+    db = SessionLocal()
+    try:
+        src  = {s.name: s.id for s in db.query(LeadSource).all()}
+        svc  = {s.name: s.id for s in db.query(Service).all()}
+        stg  = {s.name: s.id for s in db.query(LeadStage).order_by(LeadStage.position).all()}
+        users = {u.email.split("@")[0]: u.id for u in db.query(User).all()}
+
+        def add_lead(phone, client, company, source, service, stage, setter, closer=None, amount=0, comment=""):
+            if db.query(Lead).filter_by(phone=phone).first():
+                return
+            setter_id = users.get(setter)
+            closer_id = users.get(closer) if closer else None
+            stage_id = stg.get(stage)
+            lead = Lead(
+                client_name=client, company_name=company, phone=phone,
+                source_id=src.get(source), service_id=svc.get(service),
+                stage_id=stage_id, setter_id=setter_id, closer_id=closer_id,
+                potential_amount=amount, comment=comment,
+                status=LeadStatus.active,
+            )
+            db.add(lead); db.flush()
+            if stage_id:
+                db.add(LeadStageHistory(lead_id=lead.id, from_stage_id=None,
+                    to_stage_id=stage_id, changed_by=setter_id, comment="Лид создан"))
+                db.add(LeadActivity(lead_id=lead.id, activity_type="created",
+                    description="Лид создан", responsible_id=setter_id))
+            db.flush()
+
+        add_lead("+996 700 111111", "Алибек Джумалиев", "Sushi Pro KG",
+                 "Instagram", "AI чат-бот", "Встреча", "rahima", "arslan", 150000, "Интерес к боту для доставки")
+        add_lead("+996 555 222222", "Айгерим Токтосунова", "Beauty Studio",
+                 "WhatsApp", "Автоматизация", "Созвон", "minai", None, 80000, "Хочет автоматизировать запись")
+        add_lead("+996 777 333333", "Бакыт Малиев", "БакытСтрой",
+                 "Сарафан", "Сайт", "Демо-тест", "rahima", None, 120000)
+        add_lead("+996 500 444444", "Жибек Асанова", "",
+                 "Facebook", "AI чат-бот", "Договор", "minai", "marlen", 200000, "Согласовали условия")
+        add_lead("+996 770 555555", "Нурлан Исаков", "Naryn Trade",
+                 "Повторный клиент", "Интернет-магазин", "Ожидание оплаты", "abylay", "arslan", 350000, "Ждём оплату")
+        add_lead("+996 700 666666", "Канат Сейитов", "KG Market",
+                 "Instagram", "CRM", "Новый лид", "rahima", None, 90000)
+        add_lead("+996 555 777777", "Мира Токоева", "MiraShop",
+                 "WhatsApp", "AI чат-бот", "Оплачено", "minai", "marlen", 180000, "Оплата прошла, начинаем разработку")
+        add_lead("+996 777 888888", "Эрик Джунусов", "Юридическая фирма Джунусов",
+                 "Сарафан", "Сайт", "Минус", "abylay", None, 0, "Не прошёл квалификацию")
+
+        db.commit()
+    finally:
+        db.close()
+
+
+def seed_payroll_and_finance():
+    """Add PayrollRules and demo FinanceTransactions. Idempotent."""
+    db = SessionLocal()
+    try:
+        users = {u.email.split("@")[0]: u for u in db.query(User).all()}
+        today = date(2026, 1, 1)
+
+        def _add_rule(user_name, base, pct, condition):
+            u = users.get(user_name)
+            if not u:
+                return
+            exists = db.query(PayrollRule).filter_by(
+                employee_id=u.id, commission_condition=condition, active_from=today
+            ).first()
+            if not exists:
+                db.add(PayrollRule(
+                    employee_id=u.id,
+                    base_salary=base,
+                    commission_percent=pct,
+                    commission_condition=condition,
+                    active_from=today,
+                    active_to=None,
+                ))
+
+        # Setters: 10 000 оклад + 10% с from_setter сделок
+        for setter in ("rahima", "minai", "abylay"):
+            _add_rule(setter, 10000, 10, "from_setter")
+
+        # Closers: 10% if from_setter deal, 20% if closer_self deal
+        for closer in ("arslan", "marlen"):
+            _add_rule(closer, 0, 10, "from_setter")
+            _add_rule(closer, 0, 20, "closer_self")
+
+        # Nazar (маркетинг): оклад 25 000, без комиссий
+        _add_rule("nazar", 25000, 0, "none")
+
+        # Backenders: fixed salary, no commissions
+        for backender in ("talgat", "bektur", "miro"):
+            _add_rule(backender, 20000, 0, "none")
+
+        # Erbol (Тимлид): fixed salary handled via DevPayrollConfig; add rule for fallback
+        _add_rule("erbol", 15000, 0, "none")
+
+        db.commit()
+
+        # Demo finance transactions
+        if not db.query(FinanceTransaction).first():
+            today_tx = date(2026, 6, 1)
+            db.add(FinanceTransaction(
+                type="expense", category="Таргет", amount=15000,
+                date=today_tx, comment="Реклама Instagram — июнь",
+            ))
+            db.add(FinanceTransaction(
+                type="expense", category="Постоянные расходы", amount=8000,
+                date=today_tx, comment="Офисная аренда",
+            ))
+            db.add(FinanceTransaction(
+                type="expense", category="ФОТ", amount=95000,
+                date=date(2026, 6, 5), comment="Зарплаты за май",
+            ))
+            db.add(FinanceTransaction(
+                type="income", category=None, amount=180000,
+                date=date(2026, 6, 3), comment="Оплата сделки MiraShop (демо)",
+            ))
+            db.commit()
+    finally:
+        db.close()
+
+
+def seed_dev_payroll():
+    """Seed DevPayrollConfig and add Adakhan to sales department. Idempotent."""
+    db = SessionLocal()
+    try:
+        # DevPayrollConfig
+        if not db.query(DevPayrollConfig).filter_by(role_kind="prompter").first():
+            db.add(DevPayrollConfig(
+                role_kind="prompter",
+                new_bot_price=5000,
+                support_price=1000,
+                base_salary=20000,
+                free_bots_limit=4,
+                updated_at=datetime.now(timezone.utc),
+            ))
+        if not db.query(DevPayrollConfig).filter_by(role_kind="teamlead").first():
+            db.add(DevPayrollConfig(
+                role_kind="teamlead",
+                new_bot_price=1000,
+                support_price=300,
+                base_salary=15000,
+                free_bots_limit=0,
+                updated_at=datetime.now(timezone.utc),
+            ))
+        db.commit()
+
+        # Adakhan → also in sales department so he appears in closer dropdowns
+        adahan = db.query(User).filter_by(email="adahan@nevodevs.kg").first()
+        sales_dept = db.query(Department).filter_by(slug="sales").first()
+        if adahan and sales_dept and adahan not in sales_dept.members:
+            sales_dept.members.append(adahan)
+            db.commit()
+    finally:
+        db.close()
+
+
+def seed_ad_expenses():
+    """Add demo AdExpense rows. Idempotent — skips if already any exist."""
+    db = SessionLocal()
+    try:
+        if db.query(AdExpense).first():
+            return
+        instagram_src = db.query(LeadSource).filter_by(name="Instagram").first()
+        facebook_src = db.query(LeadSource).filter_by(name="Facebook").first()
+
+        rows = [
+            # Instagram — основной (~100 000 сом/мес)
+            AdExpense(date=date(2026, 6, 1),  source_id=instagram_src.id if instagram_src else None,
+                      ad_account="Instagram Ads", campaign_name="Лидген AI чат-бот", amount=35000, currency="сом"),
+            AdExpense(date=date(2026, 6, 8),  source_id=instagram_src.id if instagram_src else None,
+                      ad_account="Instagram Ads", campaign_name="Ретаргет сайт", amount=25000, currency="сом"),
+            AdExpense(date=date(2026, 6, 15), source_id=instagram_src.id if instagram_src else None,
+                      ad_account="Instagram Ads", campaign_name="Лидген AI чат-бот", amount=25000, currency="сом"),
+            AdExpense(date=date(2026, 6, 22), source_id=instagram_src.id if instagram_src else None,
+                      ad_account="Instagram Ads", campaign_name="Stories чат-бот", amount=20000, currency="сом"),
+            # Facebook — меньше
+            AdExpense(date=date(2026, 6, 5),  source_id=facebook_src.id if facebook_src else None,
+                      ad_account="Facebook Ads", campaign_name="B2B автоматизация", amount=18000, currency="сом"),
+            AdExpense(date=date(2026, 6, 18), source_id=facebook_src.id if facebook_src else None,
+                      ad_account="Facebook Ads", campaign_name="Ретаргет FB", amount=12000, currency="сом"),
+        ]
+        for r in rows:
+            db.add(r)
+        db.commit()
+    finally:
+        db.close()
+
+
+def seed_monthly_plan():
+    """Seed MonthlyPlan for current month. Idempotent."""
+    db = SessionLocal()
+    try:
+        today = date.today()
+        existing = db.query(MonthlyPlan).filter_by(year=today.year, month=today.month).first()
+        if existing:
+            return
+        db.add(MonthlyPlan(
+            year=today.year,
+            month=today.month,
+            plan_revenue=720000,
+            plan_leads=80,
+            plan_meetings=30,
+            plan_sales=15,
+            plan_cpl=2500,
+            plan_cac=8000,
+            plan_expenses=300000,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
     seed()
+    seed_ad_expenses()
+    seed_monthly_plan()
+    seed_dev_payroll()

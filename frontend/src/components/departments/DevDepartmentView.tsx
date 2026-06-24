@@ -2,23 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import { BoardView } from "@/components/BoardView";
 import { UserModal } from "@/components/UserModal";
-import { ServerModal } from "@/components/ServerModal";
+import { ProjectModal } from "@/components/ProjectModal";
 import { useApp } from "@/context/AppContext";
 import { useToast } from "@/context/ToastContext";
-import { api } from "@/lib/api";
+import { api, leadApi } from "@/lib/api";
 import {
-  Department, UserWithStats, Server, Board, STATUS_LABELS, ServerStatus,
+  Department, UserWithStats, Project, Board, Lead, STATUS_LABELS, ProjectStatus,
   BOT_COLORS, BOT_SUB_STATUSES, BotColor,
 } from "@/lib/types";
 
-// Helper: compute total salary for a prompter from their servers
-function calcSalary(servers: Server[], userId: number): number {
-  return servers
-    .filter((s) => s.owner_id === userId)
-    .reduce((sum, s) => sum + (s.price || (s.status === "support" ? 1000 : 0)), 0);
+// Helper: compute total salary for a prompter from their projects
+function calcSalary(projects: Project[], userId: number): number {
+  return projects
+    .filter((p) => p.owner_id === userId)
+    .reduce((sum, p) => sum + (p.price || (p.status === "support" ? 1000 : 0)), 0);
 }
 
 export function DevDepartmentView({ dept, departments }: { dept: Department; departments: Department[] }) {
@@ -26,18 +27,31 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
   const toast = useToast();
   const router = useRouter();
   const [users, setUsers] = useState<UserWithStats[]>([]);
-  const [servers, setServers] = useState<Server[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [leadsMap, setLeadsMap] = useState<Record<number, Lead>>({});
   const [backendBoard, setBackendBoard] = useState<Board | null>(null);
   const [userModal, setUserModal] = useState(false);
-  const [serverModal, setServerModal] = useState(false);
-  const [editingServer, setEditingServer] = useState<Server | null>(null);
+  const [projectModal, setProjectModal] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [prompterFilter, setPrompterFilter] = useState<number | null>(null);
-  const [serverPage, setServerPage] = useState(1);
-  const SERVER_PAGE_SIZE = 30;
+  const [projectPage, setProjectPage] = useState(1);
+  const PROJECT_PAGE_SIZE = 30;
 
   const load = useCallback(() => {
     api.listUsers(dept.id).then(setUsers).catch(() => {});
-    api.listServers().then(setServers).catch(() => {});
+    api.listProjects().then((prjs) => {
+      setProjects(prjs);
+      // Load leads for projects that have lead_id
+      const leadIds = [...new Set(prjs.filter(p => p.lead_id).map(p => p.lead_id as number))];
+      if (leadIds.length > 0) {
+        Promise.all(leadIds.map(id => leadApi.get(id).catch(() => null)))
+          .then(leads => {
+            const map: Record<number, Lead> = {};
+            leads.forEach(l => { if (l) map[l.id] = l; });
+            setLeadsMap(map);
+          });
+      }
+    }).catch(() => {});
     api.boardsForDepartment(dept.id).then((bs) => setBackendBoard(bs.find((b) => b.kind === "backend_queue") ?? null)).catch(() => {});
   }, [dept.id]);
 
@@ -46,13 +60,13 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
   const backend = users.filter((u) => u.position === "Бэкенд" || u.position === "Главный тех лид");
   const prompters = users.filter((u) => u.position === "Промпт-инженер" || u.position === "Тимлид");
 
-  const filteredServers = prompterFilter ? servers.filter((sv) => sv.owner_id === prompterFilter) : servers;
-  const visibleServers = filteredServers.slice(0, serverPage * SERVER_PAGE_SIZE);
-  const hasMoreServers = filteredServers.length > visibleServers.length;
+  const filteredProjects = prompterFilter ? projects.filter((p) => p.owner_id === prompterFilter) : projects;
+  const visibleProjects = filteredProjects.slice(0, projectPage * PROJECT_PAGE_SIZE);
+  const hasMoreProjects = filteredProjects.length > visibleProjects.length;
 
   function setFilter(id: number | null) {
     setPrompterFilter(id);
-    setServerPage(1);
+    setProjectPage(1);
   }
 
   const fmtDate = (d: string | null) => {
@@ -61,9 +75,9 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
     return `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()}`;
   };
 
-  async function quickUpdateBot(id: number, patch: Partial<Server>) {
+  async function quickUpdateProject(id: number, patch: Partial<Project>) {
     try {
-      await api.updateServer(id, patch);
+      await api.updateProject(id, patch);
       load();
     } catch (e: any) { toast(e.message, "error"); }
   }
@@ -73,7 +87,7 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 22 }}>
         <div>
           <div className="page-h1">Отдел разработки</div>
-          <div className="page-desc">Команда, боты и очередь задач</div>
+          <div className="page-desc">Команда, проекты и очередь задач</div>
         </div>
         {isAdmin && (
           <button className="btn btn-primary" onClick={() => setUserModal(true)}>
@@ -103,7 +117,7 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
       <SectionLabel style={{ marginTop: 34 }}>Промпт-инженеры</SectionLabel>
       <div className="prompters-grid">
         {prompters.map((u) => {
-          const salary = calcSalary(servers, u.id);
+          const salary = calcSalary(projects, u.id);
           return (
             <div key={u.id} className="prompter-card card" onClick={() => router.push(`/team/${u.id}`)}>
               <div className="pc-head">
@@ -129,29 +143,33 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
                 </div>
               )}
 
-              <div className="pc-divider" />
-              <div className="pc-stats">
-                <Stat v={u.total_bots} l="Всего ботов" />
-                <Stat v={u.new_bots} l="Новых" c="var(--primary)" />
-                <Stat v={u.support_bots} l="Тех" c="var(--orange)" />
-              </div>
+              {(u.position === "Промпт-инженер" || u.position === "Тимлид") && (
+                <>
+                  <div className="pc-divider" />
+                  <div className="pc-stats">
+                    <Stat v={u.total_bots} l="Всего" />
+                    <Stat v={u.new_bots} l="Новых" c="var(--primary)" />
+                    <Stat v={u.support_bots} l="Тех" c="var(--orange)" />
+                  </div>
+                </>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Server List */}
+      {/* Projects List */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 34, marginBottom: 14 }}>
-        <SectionLabel style={{ margin: 0 }}>Server List (WhatsApp)</SectionLabel>
-        <button className="btn btn-ghost" onClick={() => { setEditingServer(null); setServerModal(true); }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span> Добавить бота
+        <SectionLabel style={{ margin: 0 }}>Проекты</SectionLabel>
+        <button className="btn btn-ghost" onClick={() => { setEditingProject(null); setProjectModal(true); }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span> Добавить проект
         </button>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <div className={`chip ${prompterFilter === null ? "active" : ""}`} onClick={() => setFilter(null)}>Все ({servers.length})</div>
+        <div className={`chip ${prompterFilter === null ? "active" : ""}`} onClick={() => setFilter(null)}>Все ({projects.length})</div>
         {prompters.map((u) => {
-          const cnt = servers.filter((sv) => sv.owner_id === u.id).length;
-          const sal = calcSalary(servers, u.id);
+          const cnt = projects.filter((p) => p.owner_id === u.id).length;
+          const sal = calcSalary(projects, u.id);
           return (
             <div key={u.id} className={`chip ${prompterFilter === u.id ? "active" : ""}`}
               onClick={() => setFilter(u.id === prompterFilter ? null : u.id)}>
@@ -167,64 +185,90 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
             <thead>
               <tr>
                 <th style={{ width: 8 }}></th>
-                <th>Компания</th>
+                <th>Проект</th>
                 <th>Статус</th>
                 <th>Подстатус</th>
                 <th style={{ textAlign: "right" }}>Цена</th>
-                <th>Дата подключения</th>
+                <th>Из сделки</th>
+                <th>Подключён</th>
+                <th>Сдан</th>
                 <th>Промптер</th>
                 <th>Комментарий</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {visibleServers.map((s) => {
-                const col = BOT_COLORS[s.color as BotColor] ?? BOT_COLORS.green;
+              {visibleProjects.map((p) => {
+                const col = BOT_COLORS[p.color as BotColor] ?? BOT_COLORS.green;
+                const lead = p.lead_id ? leadsMap[p.lead_id] : null;
                 return (
-                  <tr key={s.id}>
-                    {/* Color dot */}
+                  <tr key={p.id}>
                     <td style={{ padding: "0 0 0 14px" }}>
                       <span title={col.label} style={{
                         display: "inline-block", width: 10, height: 10, borderRadius: "50%",
                         background: col.color, flexShrink: 0,
                       }} />
                     </td>
-                    <td style={{ color: "var(--text)", fontWeight: 500 }}>{s.company}</td>
-                    <td><StatusBadge status={s.status} /></td>
+                    <td style={{ color: "var(--text)", fontWeight: 500 }}>{p.company}</td>
+                    <td><StatusBadge status={p.status} /></td>
                     <td>
-                      {s.status === "new" && s.sub_status ? (
+                      {p.status === "new" && p.sub_status ? (
                         <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 5,
                           background: "var(--bg3)", color: "var(--text2)", border: "1px solid var(--border)" }}>
-                          {s.sub_status}
+                          {p.sub_status}
                         </span>
                       ) : <span style={{ color: "var(--text3)" }}>—</span>}
                     </td>
                     <td style={{ textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--green)", fontWeight: 600 }}>
-                      {s.price > 0 ? `${s.price.toLocaleString("ru-RU")}` : "—"}
+                      {p.price > 0 ? `${p.price.toLocaleString("ru-RU")}` : "—"}
                     </td>
-                    <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>{fmtDate(s.connected_at)}</td>
+                    <td style={{ minWidth: 160 }}>
+                      {lead ? (
+                        <Link href={`/leads/${lead.id}`} style={{ textDecoration: "none" }}
+                          onClick={(e) => e.stopPropagation()}>
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "3px 8px", borderRadius: 5,
+                            background: "var(--primary-dim)", color: "var(--primary)",
+                            fontSize: 11, fontWeight: 500, cursor: "pointer",
+                          }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>link</span>
+                            {lead.company_name || lead.client_name}
+                            {lead.actual_amount > 0 && (
+                              <span style={{ opacity: 0.8 }}>· {lead.actual_amount.toLocaleString("ru-RU")} с</span>
+                            )}
+                          </span>
+                        </Link>
+                      ) : <span style={{ color: "var(--text3)" }}>—</span>}
+                    </td>
+                    <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>{fmtDate(p.connected_at)}</td>
+                    <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>
+                      {p.delivered_at ? (
+                        <span style={{ color: "var(--green)", fontWeight: 600 }}>{fmtDate(p.delivered_at)}</span>
+                      ) : <span style={{ color: "var(--text3)" }}>—</span>}
+                    </td>
                     <td>
-                      {s.owner ? (
+                      {p.owner ? (
                         <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                          <Avatar name={s.owner.name} color={s.owner.avatar_color} size={22} /> {s.owner.name}
+                          <Avatar name={p.owner.name} color={p.owner.avatar_color} size={22} /> {p.owner.name}
                         </span>
                       ) : <span style={{ color: "var(--text3)" }}>—</span>}
                     </td>
                     <td style={{ maxWidth: 180 }}>
                       <span style={{ fontSize: 12, color: "var(--text3)", display: "-webkit-box",
                         WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                        {s.bot_comment || "—"}
+                        {p.bot_comment || "—"}
                       </span>
                     </td>
-                    {(isAdmin || s.owner_id === currentUser?.id) && (
+                    {(isAdmin || p.owner_id === currentUser?.id) && (
                       <td style={{ width: 70 }}>
                         <div style={{ display: "flex", gap: 4 }}>
-                          <button className="row-act" onClick={() => { setEditingServer(s); setServerModal(true); }}>
+                          <button className="row-act" onClick={() => { setEditingProject(p); setProjectModal(true); }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 17 }}>edit</span>
                           </button>
                           {isAdmin && (
                             <button className="row-act" onClick={async () => {
-                              if (confirm(`Удалить «${s.company}»?`)) { await api.deleteServer(s.id); load(); }
+                              if (confirm(`Удалить проект «${p.company}»?`)) { await api.deleteProject(p.id); load(); }
                             }}>
                               <span className="material-symbols-outlined" style={{ fontSize: 17 }}>delete</span>
                             </button>
@@ -237,11 +281,11 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
               })}
             </tbody>
           </table>
-          {hasMoreServers && (
+          {hasMoreProjects && (
             <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
               <button className="btn btn-ghost" style={{ width: "100%", fontSize: 12 }}
-                onClick={() => setServerPage(p => p + 1)}>
-                Загрузить ещё ({filteredServers.length - visibleServers.length})
+                onClick={() => setProjectPage(p => p + 1)}>
+                Загрузить ещё ({filteredProjects.length - visibleProjects.length})
               </button>
             </div>
           )}
@@ -254,7 +298,7 @@ export function DevDepartmentView({ dept, departments }: { dept: Department; dep
       {backendBoard && <BoardView boardId={backendBoard.id} />}
 
       <UserModal open={userModal} onClose={() => setUserModal(false)} onSaved={load} user={null} departments={departments} defaultDeptId={dept.id} />
-      <ServerModal open={serverModal} onClose={() => setServerModal(false)} onSaved={load} server={editingServer} users={users} />
+      <ProjectModal open={projectModal} onClose={() => setProjectModal(false)} onSaved={load} project={editingProject} users={users} />
 
       <style jsx global>{`
         .backend-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
@@ -298,7 +342,7 @@ function SectionLabel({ children, style }: { children: React.ReactNode; style?: 
 function Stat({ v, l, c }: { v: number; l: string; c?: string }) {
   return <div><div className="pc-val" style={{ color: c }}>{v}</div><div className="pc-lbl">{l}</div></div>;
 }
-function StatusBadge({ status }: { status: ServerStatus }) {
+function StatusBadge({ status }: { status: ProjectStatus }) {
   const isNew = status === "new";
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 5, fontSize: 11, fontWeight: 600,

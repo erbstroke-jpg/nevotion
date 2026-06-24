@@ -444,7 +444,7 @@ function MeetingsTableModal({ onClose, allUsers, initUser, currentUser, isAdmin 
   isAdmin: boolean;
 }) {
   const setters = allUsers.filter((u) => u.position === "Сеттер" || u.position === "Руководитель продаж");
-  const closers = allUsers.filter((u) => u.position === "Клоузер");
+  const closers = allUsers.filter((u) => u.position === "Клоузер" || u.position === "Финансовый директор");
 
   // Filter state
   const [period, setPeriod] = useState<"day" | "week" | "month" | "custom">("month");
@@ -677,7 +677,10 @@ function MeetingModal({ open, onClose, onSaved, closers, defaultDate }: {
   useEffect(() => {
     if (!open) return;
     // Use local date/time to avoid UTC timezone shift
-    const d = toLocalDT(defaultDate);
+    // Format defaultDate as Bishkek local datetime-local string
+    const Y = defaultDate.getFullYear(), Mo = String(defaultDate.getMonth()+1).padStart(2,"0");
+    const D = String(defaultDate.getDate()).padStart(2,"0"), h = String(defaultDate.getHours()).padStart(2,"0"), mi = String(defaultDate.getMinutes()).padStart(2,"0");
+    const d = `${Y}-${Mo}-${D}T${h}:${mi}`;
     setForm({ closer_id: closers[0]?.id?.toString() ?? "", meeting_date: d, address: "", client_name: "", client_phone: "", notes: "" });
   }, [open]);
 
@@ -685,7 +688,7 @@ function MeetingModal({ open, onClose, onSaved, closers, defaultDate }: {
     if (!form.client_name.trim() || !form.closer_id) return;
     setSaving(true);
     try {
-      await meetingApi.create({ ...form, closer_id: Number(form.closer_id) });
+      await meetingApi.create({ ...form, closer_id: Number(form.closer_id), meeting_date: localToUTC(form.meeting_date) });
       toast("Встреча назначена");
       onClose(); onSaved();
     } catch (e: any) { toast(e.message, "error"); }
@@ -765,7 +768,7 @@ function MeetingDetailModal({ open, onClose, onSaved, meeting, closers, currentU
   async function saveEdit() {
     setSaving(true);
     try {
-      await meetingApi.update(meeting.id, { ...editForm, closer_id: Number(editForm.closer_id) });
+      await meetingApi.update(meeting.id, { ...editForm, closer_id: Number(editForm.closer_id), meeting_date: localToUTC(editForm.meeting_date) });
       toast("Встреча обновлена");
       setEditMode(false);
       onSaved();
@@ -987,40 +990,48 @@ export function ColumnsModal({ open, onClose, onSaved, columns, addFn, delFn, re
 }
 
 // ============================= UTILS =============================
-function toLocalDT(date: Date): string {
-  const Y = date.getFullYear();
-  const M = String(date.getMonth() + 1).padStart(2, "0");
-  const D = String(date.getDate()).padStart(2, "0");
-  const h = String(date.getHours()).padStart(2, "0");
-  const m = String(date.getMinutes()).padStart(2, "0");
-  return `${Y}-${M}-${D}T${h}:${m}`;
+// ── Timezone helpers: all times displayed/input in Asia/Bishkek (UTC+6) ──────
+// Convert "YYYY-MM-DDTHH:MM" (Bishkek local) → ISO UTC string for backend
+function localToUTC(s: string): string {
+  const [d, t = "00:00"] = s.split("T");
+  const [Y, Mo, D] = d.split("-").map(Number);
+  const [h, m] = t.split(":").map(Number);
+  return new Date(Date.UTC(Y, Mo - 1, D, h - 6, m)).toISOString();
+}
+// Convert ISO UTC string → "YYYY-MM-DDTHH:MM" in Bishkek (+6h)
+function utcToLocal(s: string): string {
+  const Y = +s.slice(0, 4), Mo = +s.slice(5, 7) - 1, D = +s.slice(8, 10);
+  const h = +s.slice(11, 13), m = +s.slice(14, 16);
+  const ms = Date.UTC(Y, Mo, D, h, m) + 6 * 3600 * 1000;
+  const ld = new Date(ms);
+  return `${ld.getUTCFullYear()}-${String(ld.getUTCMonth()+1).padStart(2,"0")}-${String(ld.getUTCDate()).padStart(2,"0")}T${String(ld.getUTCHours()).padStart(2,"0")}:${String(ld.getUTCMinutes()).padStart(2,"0")}`;
 }
 
-// Parse "wall-clock" components directly from the ISO string, WITHOUT timezone
-// conversion. The backend stores/returns meeting_date with a +00:00 offset, and
-// using new Date() would shift it by the browser's timezone (e.g. +6 in Bishkek).
 function fmtDate(d: string) {
-  const datePart = d.slice(0, 10); // "YYYY-MM-DD"
-  const [Y, M, D] = datePart.split("-");
-  if (!Y || !M || !D) return d;
-  return `${D}.${M}.${Y}`;
+  const local = d.includes("T") ? utcToLocal(d) : d;
+  const [Y, M, Dd] = local.slice(0, 10).split("-");
+  if (!Y || !M || !Dd) return d;
+  return `${Dd}.${M}.${Y}`;
 }
 function fmtTime(d: string) {
-  const t = d.includes("T") ? d.split("T")[1] : "";
-  return t ? t.slice(0, 5) : ""; // "HH:MM"
+  const local = utcToLocal(d);
+  return local.slice(11, 16); // "HH:MM"
 }
 function fmtDatetime(d: string) {
-  const t = fmtTime(d);
-  return t ? `${fmtDate(d)} ${t}` : fmtDate(d);
+  const local = utcToLocal(d);
+  const [date, time] = local.split("T");
+  const [Y, M, Dd] = date.split("-");
+  return `${Dd}.${M}.${Y} ${time}`;
 }
-// ISO string -> value for <input type="datetime-local"> (wall-clock, no TZ shift)
+// ISO UTC string → value for <input type="datetime-local"> (converts to Bishkek)
 function isoToInput(d: string): string {
-  return d.slice(0, 16); // "YYYY-MM-DDTHH:MM"
+  return utcToLocal(d);
 }
-// ISO string -> local Date carrying the same wall-clock components (no TZ shift)
+// ISO UTC string → Date object in Bishkek wall-clock (for calendar rendering)
 function isoToWallDate(d: string): Date {
-  const Y = Number(d.slice(0, 4)), M = Number(d.slice(5, 7)), D = Number(d.slice(8, 10));
-  const h = Number(d.slice(11, 13)) || 0, m = Number(d.slice(14, 16)) || 0;
+  const local = utcToLocal(d);
+  const Y = Number(local.slice(0, 4)), M = Number(local.slice(5, 7)), D = Number(local.slice(8, 10));
+  const h = Number(local.slice(11, 13)) || 0, m = Number(local.slice(14, 16)) || 0;
   return new Date(Y, (M || 1) - 1, D || 1, h, m);
 }
 

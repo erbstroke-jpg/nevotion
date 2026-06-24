@@ -3,7 +3,7 @@ from typing import Optional, Any
 
 from pydantic import BaseModel, EmailStr, ConfigDict
 
-from app.models import Role, ServerStatus, Priority
+from app.models import Role, ProjectStatus, Priority
 
 
 # ---------- Auth ----------
@@ -78,36 +78,40 @@ class DepartmentUpdate(BaseModel):
     embed_url: Optional[str] = None
 
 
-# ---------- Server ----------
-class ServerBase(BaseModel):
+# ---------- Project ----------
+class ProjectBase(BaseModel):
     company: str
-    status: ServerStatus = ServerStatus.new
+    status: ProjectStatus = ProjectStatus.new
     sub_status: Optional[str] = None
     price: int = 0
     color: str = "green"
     bot_comment: str = ""
     connected_at: Optional[date] = None
+    delivered_at: Optional[date] = None
     notes: str = ""
     owner_id: Optional[int] = None
+    lead_id: Optional[int] = None
 
 
-class ServerCreate(ServerBase):
+class ProjectCreate(ProjectBase):
     pass
 
 
-class ServerUpdate(BaseModel):
+class ProjectUpdate(BaseModel):
     company: Optional[str] = None
-    status: Optional[ServerStatus] = None
+    status: Optional[ProjectStatus] = None
     sub_status: Optional[str] = None
     price: Optional[int] = None
     color: Optional[str] = None
     bot_comment: Optional[str] = None
     connected_at: Optional[date] = None
+    delivered_at: Optional[date] = None
     notes: Optional[str] = None
     owner_id: Optional[int] = None
+    lead_id: Optional[int] = None
 
 
-class ServerOut(ServerBase):
+class ProjectOut(ProjectBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     owner: Optional[UserOut] = None
@@ -230,6 +234,45 @@ class SalesRecordOut(BaseModel):
     record_date: date
     metrics: dict[str, Any]
     user: Optional[UserOut] = None
+
+
+# ---------- AdExpense ----------
+class AdExpenseCreate(BaseModel):
+    date: date
+    source_id: Optional[int] = None
+    ad_account: str = ""
+    campaign_name: str = ""
+    amount: int
+    currency: str = "сом"
+    responsible_id: Optional[int] = None
+    comment: str = ""
+
+
+class AdExpenseUpdate(BaseModel):
+    date: Optional[date] = None
+    source_id: Optional[int] = None
+    ad_account: Optional[str] = None
+    campaign_name: Optional[str] = None
+    amount: Optional[int] = None
+    currency: Optional[str] = None
+    responsible_id: Optional[int] = None
+    comment: Optional[str] = None
+
+
+class AdExpenseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    date: date
+    source_id: Optional[int]
+    ad_account: str
+    campaign_name: str
+    amount: int
+    currency: str
+    responsible_id: Optional[int]
+    comment: str
+    created_at: datetime
+    source: Optional[Any] = None
+    responsible: Optional[Any] = None
 
 
 # ---------- Marketing ----------

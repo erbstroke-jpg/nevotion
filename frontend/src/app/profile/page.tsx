@@ -4,10 +4,163 @@ import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { useApp } from "@/context/AppContext";
 import { useToast } from "@/context/ToastContext";
-import { api } from "@/lib/api";
-import { AVATAR_COLORS } from "@/lib/types";
+import { api, apiKeys as apiKeysApi } from "@/lib/api";
+import { AVATAR_COLORS, ApiKey, ApiKeyCreated } from "@/lib/types";
 
 const COLORS = Object.keys(AVATAR_COLORS);
+
+function ApiKeysSection() {
+  const toast = useToast();
+  const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function load() {
+    try {
+      const data = await apiKeysApi.list();
+      setKeys(data);
+    } catch {}
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleCreate() {
+    if (!newName.trim()) { toast("Введите название ключа", "error"); return; }
+    setCreating(true);
+    try {
+      const created = await apiKeysApi.create(newName.trim());
+      setCreatedKey(created);
+      setNewName("");
+      setShowCreate(false);
+      await load();
+    } catch (e: any) { toast(e.message, "error"); }
+    finally { setCreating(false); }
+  }
+
+  async function handleRevoke(id: number) {
+    try {
+      await apiKeysApi.revoke(id);
+      setKeys(keys.filter(k => k.id !== id));
+      toast("Ключ отозван");
+    } catch (e: any) { toast(e.message, "error"); }
+  }
+
+  function copyKey() {
+    if (!createdKey) return;
+    navigator.clipboard.writeText(createdKey.plain_key);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="card" style={{ padding: 28, marginTop: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(99,102,241,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: "#6366f1" }}>vpn_key</span>
+          </div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>API-ключи (для Claude)</div>
+            <div style={{ fontSize: 12, color: "var(--text3)" }}>Подключите Claude Desktop через MCP-сервер</div>
+          </div>
+        </div>
+        <button className="btn btn-primary" onClick={() => setShowCreate(true)} style={{ fontSize: 13 }}>
+          + Создать ключ
+        </button>
+      </div>
+
+      {/* Newly created key — show once */}
+      {createdKey && (
+        <div style={{ background: "rgba(22,163,74,0.08)", border: "1px solid rgba(22,163,74,0.3)", borderRadius: 10, padding: 16, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, color: "#16a34a" }}>check_circle</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#16a34a" }}>Ключ создан — скопируйте сейчас, больше не покажем!</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <code style={{ flex: 1, fontSize: 12, background: "var(--bg2)", padding: "8px 12px", borderRadius: 8, wordBreak: "break-all", color: "var(--text)", border: "1px solid var(--border)" }}>
+              {createdKey.plain_key}
+            </code>
+            <button className="btn" onClick={copyKey} style={{ flexShrink: 0, fontSize: 12 }}>
+              {copied ? "Скопировано!" : "Копировать"}
+            </button>
+          </div>
+          <button onClick={() => setCreatedKey(null)} style={{ marginTop: 10, fontSize: 12, color: "var(--text3)", background: "none", border: "none", cursor: "pointer" }}>
+            Закрыть
+          </button>
+        </div>
+      )}
+
+      {/* Create form */}
+      {showCreate && !createdKey && (
+        <div style={{ background: "var(--bg2)", borderRadius: 10, padding: 16, marginBottom: 20, border: "1px solid var(--border)" }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text2)", marginBottom: 8 }}>Название ключа</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              className="field-input"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Например: Мой Claude"
+              onKeyDown={e => e.key === "Enter" && handleCreate()}
+              style={{ flex: 1 }}
+              autoFocus
+            />
+            <button className="btn btn-primary" onClick={handleCreate} disabled={creating} style={{ flexShrink: 0 }}>
+              {creating ? "…" : "Создать"}
+            </button>
+            <button className="btn" onClick={() => { setShowCreate(false); setNewName(""); }} style={{ flexShrink: 0 }}>
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Keys list */}
+      {loading ? (
+        <div style={{ fontSize: 13, color: "var(--text3)", padding: "12px 0" }}>Загрузка…</div>
+      ) : keys.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text3)", padding: "12px 0" }}>Нет активных ключей</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {keys.map(k => (
+            <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--bg2)", borderRadius: 8, border: "1px solid var(--border)" }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18, color: "var(--text3)" }}>key</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{k.name}</div>
+                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
+                  {k.key_prefix}… · создан {new Date(k.created_at).toLocaleDateString("ru")}
+                  {k.last_used_at && ` · использован ${new Date(k.last_used_at).toLocaleDateString("ru")}`}
+                </div>
+              </div>
+              <button
+                onClick={() => handleRevoke(k.id)}
+                style={{ fontSize: 12, color: "#ef4444", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
+              >
+                Отозвать
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "20px 0 16px" }} />
+      <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.7 }}>
+        <div style={{ fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>Как подключить к Claude Desktop:</div>
+        <ol style={{ margin: 0, paddingLeft: 18 }}>
+          <li>Создайте ключ выше и скопируйте его</li>
+          <li>Скачайте и настройте MCP-сервер из папки <code>mcp-server/</code> репозитория</li>
+          <li>Добавьте в конфиг Claude Desktop переменные <code>NEVOOCEAN_API_URL</code> и <code>NEVOOCEAN_API_KEY</code></li>
+          <li>Перезапустите Claude Desktop — инструменты появятся автоматически</li>
+        </ol>
+        <div style={{ marginTop: 8 }}>Подробнее: <code>mcp-server/README.md</code></div>
+      </div>
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const { user, refreshUser } = useApp();
@@ -178,6 +331,9 @@ export default function ProfilePage() {
             </button>
           </div>
         </div>
+
+        {/* API Keys section — full width below */}
+        <ApiKeysSection />
 
         {/* Mobile: stack columns */}
         <style jsx>{`

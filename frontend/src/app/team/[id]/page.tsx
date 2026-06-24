@@ -7,7 +7,7 @@ import { Avatar } from "@/components/Avatar";
 import { BoardView } from "@/components/BoardView";
 import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
-import type { UserWithStats, Board, Server, BotColor } from "@/lib/types";
+import type { UserWithStats, Board, Project, BotColor } from "@/lib/types";
 import { BOT_COLORS, BOT_SUB_STATUSES, STATUS_LABELS } from "@/lib/types";
 
 const COLOR_OPTIONS: BotColor[] = ["green", "yellow", "blue", "red"];
@@ -21,14 +21,14 @@ export default function TrackerPage() {
   const [member, setMember] = useState<UserWithStats | null>(null);
   const [personalBoard, setPersonalBoard] = useState<Board | null>(null);
   const [backendQueueBoard, setBackendQueueBoard] = useState<Board | null>(null);
-  const [bots, setBots] = useState<Server[]>([]);
+  const [bots, setBots] = useState<Project[]>([]);
 
   const isPrompter = member?.position === "Промпт-инженер" || member?.position === "Тимлид";
   const isBackender = member?.position === "Бэкенд" || member?.position === "Главный тех лид";
 
   const loadBots = useCallback(() => {
     if (isPrompter) {
-      api.listServers({ owner_id: userId }).then(setBots).catch(() => {});
+      api.listProjects({ owner_id: userId }).then(setBots).catch(() => {});
     }
   }, [userId, isPrompter]);
 
@@ -54,7 +54,7 @@ export default function TrackerPage() {
 
   async function updateBot(id: number, patch: any) {
     try {
-      await api.updateServer(id, patch);
+      await api.updateProject(id, patch);
       loadBots();
     } catch (e: any) { toast(e.message, "error"); }
   }

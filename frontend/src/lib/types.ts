@@ -1,5 +1,57 @@
+// ───────────────────── CRM Lookups ─────────────────────────────
+
+export interface LeadSource {
+  id: number;
+  name: string;
+  is_active: boolean;
+  position: number;
+}
+
+export interface ServiceItem {
+  id: number;
+  name: string;
+  is_active: boolean;
+  position: number;
+}
+
+export interface LeadStage {
+  id: number;
+  name: string;
+  position: number;
+  norm_days: number | null;
+  is_won: boolean;
+  is_lost: boolean;
+  color: string;
+}
+
+export interface RejectReason {
+  id: number;
+  name: string;
+  is_active: boolean;
+  position: number;
+}
+
+export interface ExpenseCategory {
+  id: number;
+  name: string;
+  is_active: boolean;
+  position: number;
+}
+
+export interface Account {
+  id: number;
+  name: string;
+  currency: string;
+  is_active: boolean;
+  position: number;
+}
+
+// ─────────────────────────────────────────────────────────────────
+
 export type Role = "admin" | "staff";
-export type ServerStatus = "new" | "support";
+export type ProjectStatus = "new" | "support";
+/** @deprecated use ProjectStatus */
+export type ServerStatus = ProjectStatus;
 export type Priority = "low" | "med" | "high";
 
 export interface User {
@@ -51,20 +103,24 @@ export const BOT_COLORS: Record<BotColor, { label: string; color: string; bg: st
   green:  { label: "Всё отлично",     color: "#16a34a", bg: "rgba(22,163,74,0.12)" },
 };
 
-export interface Server {
+export interface Project {
   id: number;
   company: string;
-  status: ServerStatus;
+  status: ProjectStatus;
   sub_status: string | null;
   price: number;
   color: BotColor;
   bot_comment: string;
   connected_at: string | null;
+  delivered_at: string | null;
   notes: string;
   owner_id: number | null;
+  lead_id: number | null;
   owner: User | null;
   created_at: string;
 }
+/** @deprecated use Project */
+export type Server = Project;
 
 export interface BoardColumn {
   id: number;
@@ -128,8 +184,53 @@ export interface MarketingRecord {
   user: User | null;
 }
 
-export const STATUS_LABELS: Record<ServerStatus, string> = {
-  new: "Новый бот",
+export interface AdExpense {
+  id: number;
+  date: string;
+  source_id: number | null;
+  ad_account: string;
+  campaign_name: string;
+  amount: number;
+  currency: string;
+  responsible_id: number | null;
+  comment: string;
+  created_at: string;
+  source: { id: number; name: string } | null;
+  responsible: { id: number; name: string } | null;
+}
+
+export interface SourceMetric {
+  source_id: number;
+  source_name: string;
+  spend: number;
+  leads_count: number;
+  paid_count: number;
+  revenue: number;
+  cpl: number;
+  cac: number;
+  romi: number | null;
+  conversion_pct: number;
+}
+
+export interface MarketingTotals {
+  spend_today: number;
+  spend_month: number;
+  spend_period: number;
+  leads_total: number;
+  paid_count: number;
+  revenue: number;
+  cpl: number;
+  cac: number;
+  romi: number | null;
+}
+
+export interface MarketingMetrics {
+  by_source: SourceMetric[];
+  totals: MarketingTotals;
+}
+
+export const STATUS_LABELS: Record<ProjectStatus, string> = {
+  new: "Новый проект",
   support: "Тех поддержка",
 };
 
@@ -139,8 +240,8 @@ export const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
   { value: "high", label: "Высокий" },
 ];
 
-export const STATUS_OPTIONS: { value: ServerStatus; label: string }[] = [
-  { value: "new", label: "Новый бот" },
+export const STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
+  { value: "new", label: "Новый проект" },
   { value: "support", label: "Тех поддержка" },
 ];
 
@@ -221,8 +322,429 @@ export const BUG_PRIORITY: Record<BugPriority, { label: string; color: string }>
   critical: { label: "Критичный", color: "var(--red)" },
 };
 
+// ===== Leads =====
+export type LeadStatusType = "active" | "archived";
+
+export interface Deal {
+  id: number;
+  lead_id: number;
+  amount: number;
+  paid_amount: number;
+  payment_date: string | null;
+  payment_method: string;
+  status: "pending" | "paid";
+  setter_id: number | null;
+  closer_id: number | null;
+  deal_type: string;
+  contract_sent_at: string | null;
+  expected_payment_date: string | null;
+  responsible_id: number | null;
+  setter_commission: number;
+  closer_commission: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== Finance =====
+
+export interface FinanceTransaction {
+  id: number;
+  type: "income" | "expense";
+  category: string | null;
+  amount: number;
+  date: string;
+  related_lead_id: number | null;
+  related_deal_id: number | null;
+  account_id: number | null;
+  responsible_id: number | null;
+  payment_method: string;
+  comment: string;
+  created_at: string;
+  responsible: { id: number; name: string } | null;
+}
+
+export interface Debt {
+  id: number;
+  counterparty: string;
+  direction: "we_owe" | "owed_to_us";
+  amount: number;
+  created_date: string;
+  due_date: string | null;
+  status: "active" | "partial" | "paid" | "overdue";
+  comment: string;
+  created_at: string;
+}
+
+export interface AccountBalance {
+  id: number;
+  account_id: number;
+  date: string;
+  balance: number;
+  comment: string;
+  created_at: string;
+  account: { id: number; name: string } | null;
+}
+
+export interface FinanceSummary {
+  income: number;
+  expenses: number;
+  profit: number;
+  fot: number;
+  marketing_expenses: number;
+  returns: number;
+  we_owe: number;
+  owed_to_us: number;
+  total_on_accounts: number;
+  plan_income_30d: number;
+  account_balances: AccountBalance[];
+  cashflow_forecast: {
+    days_7: number;
+    days_14: number;
+    days_30: number;
+    warning_7: boolean;
+    warning_14: boolean;
+    warning_30: boolean;
+  };
+}
+
+// ===== Payroll =====
+
+export interface PayrollRule {
+  id: number;
+  employee_id: number;
+  base_salary: number;
+  commission_percent: number;
+  commission_condition: "none" | "from_setter" | "closer_self" | "any";
+  active_from: string;
+  active_to: string | null;
+  created_at: string;
+  employee: { id: number; name: string } | null;
+}
+
+export interface PayrollRecord {
+  id: number;
+  employee_id: number;
+  period_start: string;
+  period_end: string;
+  base_salary: number;
+  commission_amount: number;
+  bonus_amount: number;
+  penalty_amount: number;
+  total_amount: number;
+  status: "draft" | "paid";
+  created_at: string;
+  employee: { id: number; name: string } | null;
+}
+
+export interface DevBotLine {
+  project_id: number;
+  company: string;
+  delivered_at: string | null;
+  price: number;
+  in_free_limit: boolean;
+}
+
+export interface DevBreakdown {
+  kind: "prompter" | "teamlead" | "backender";
+  bots?: DevBotLine[];
+  support_count?: number;
+  support_price?: number;
+  support_total?: number;
+  free_bots_limit?: number;
+}
+
+export interface PayrollCalculation {
+  employee_id: number;
+  period_start: string;
+  period_end: string;
+  base_salary: number;
+  commission_amount: number;
+  bonus_amount: number;
+  penalty_amount: number;
+  total_amount: number;
+  deals: {
+    deal_id: number;
+    role: "setter" | "closer";
+    deal_amount: number;
+    commission: number;
+    payment_date: string | null;
+    deal_type: string;
+  }[];
+  dev_breakdown?: DevBreakdown;
+}
+
+export interface DevPayrollConfig {
+  id: number;
+  role_kind: "prompter" | "teamlead";
+  new_bot_price: number;
+  support_price: number;
+  base_salary: number;
+  free_bots_limit: number;
+  updated_at: string;
+}
+
+export interface Lead {
+  id: number;
+  client_name: string;
+  company_name: string;
+  phone: string;
+  whatsapp: string;
+  instagram: string;
+  email: string;
+  address: string;
+  website: string;
+  industry: string;
+  employees_count: number | null;
+  source_id: number | null;
+  service_id: number | null;
+  stage_id: number | null;
+  setter_id: number | null;
+  closer_id: number | null;
+  potential_amount: number;
+  actual_amount: number;
+  status: LeadStatusType;
+  next_action_type: string;
+  next_action_at: string | null;
+  comment: string;
+  reject_reason_id: number | null;
+  reject_comment: string;
+  created_at: string;
+  updated_at: string;
+  source: LeadSource | null;
+  service: ServiceItem | null;
+  stage: LeadStage | null;
+  setter: User | null;
+  closer: User | null;
+  active_deal: Deal | null;
+}
+
+export interface FunnelCard extends Lead {
+  days_in_stage: number;
+}
+
+export interface FunnelStats {
+  new_leads: number;
+  meetings_stage: number;
+  contracts_sent: number;
+  waiting_payment: number;
+  closed_won: number;
+  conversion_pct: number;
+  potential_sum: number;
+}
+
+export interface FunnelResponse {
+  leads: FunnelCard[];
+  stages: LeadStage[];
+}
+
+export interface LeadActivity {
+  id: number;
+  lead_id: number;
+  activity_type: string;
+  channel: string;
+  description: string;
+  responsible_id: number | null;
+  responsible: User | null;
+  created_at: string;
+}
+
+export interface LeadStageHistory {
+  id: number;
+  lead_id: number;
+  from_stage_id: number | null;
+  to_stage_id: number | null;
+  changed_by: number | null;
+  comment: string;
+  created_at: string;
+}
+
+export interface LeadFile {
+  id: number;
+  lead_id: number;
+  name: string;
+  url: string;
+  file_type: string;
+  uploaded_by: number | null;
+  uploader: User | null;
+  created_at: string;
+}
+
+export interface LeadDetail extends Lead {
+  stage_history: LeadStageHistory[];
+  activities: LeadActivity[];
+  meetings: {
+    id: number;
+    meeting_date: string;
+    client_name: string;
+    status: string;
+    closer: User | null;
+    setter: User | null;
+  }[];
+  tasks: {
+    id: number;
+    title: string;
+    priority: string;
+    due_date: string | null;
+    completed_at: string | null;
+    owner: User | null;
+  }[];
+  files: LeadFile[];
+  timeline: {
+    type: string;
+    label: string;
+    description: string;
+    at: string | null;
+    icon: string;
+    by?: string;
+  }[];
+}
+
+export interface LeadListResponse {
+  items: Lead[];
+  total: number;
+}
+
+export interface LeadStats {
+  leads_today: number;
+  leads_period: number;
+  meetings_period: number;
+  closed_won: number;
+  conversion_pct: number;
+  potential_sum: number;
+  cpl: number | null;
+}
+
+export const ACTIVITY_TYPES = [
+  "Звонок исходящий",
+  "Звонок входящий",
+  "WhatsApp",
+  "Instagram",
+  "Email",
+  "Встреча",
+  "Договор отправлен",
+  "Оплата получена",
+  "Комментарий",
+] as const;
+
+export const FILE_TYPES = ["КП", "Договор", "ТЗ", "Счёт", "Бриф", "Другое"] as const;
+
+// ===== END Leads =====
+
 export interface SalesSummary {
   setters: { user: User | null; totals: Record<string, number> }[];
   closers: { user: User | null; counts: Record<string, number>; total: number }[];
   col_defs: { key: string; label: string }[];
+}
+
+// ===== Analytics =====
+
+export interface DashboardMetrics {
+  leads_today: number;
+  leads_yesterday: number;
+  leads_month: number;
+  meetings_scheduled: number;
+  meetings_conducted: number;
+  sales_yesterday: number;
+  sales_month: number;
+  revenue_month: number;
+  plan_revenue_month: number;
+  revenue_vs_plan_pct: number | null;
+  cpl: number;
+  cac: number;
+  total_on_accounts: number;
+  pending_amount: number;
+  pending_count: number;
+  waiting_leads_amount: number;
+  expenses_month: number;
+  fot_month: number;
+  profit_month: number;
+  avg_check: number;
+  conv_lead_meeting_pct: number;
+  conv_meeting_sale_pct: number;
+  conv_lead_sale_pct: number;
+  cashflow_7d: number;
+  cashflow_30d: number;
+  cashflow_warning: boolean;
+}
+
+export interface DailyPoint {
+  date: string;
+  leads: number;
+  meetings: number;
+  sales: number;
+  revenue: number;
+}
+
+export interface FunnelPoint {
+  stage_id: number;
+  stage_name: string;
+  count: number;
+  color: string;
+  is_won: boolean;
+  is_lost: boolean;
+}
+
+export interface PiePoint {
+  name: string;
+  count?: number;
+  pct?: number;
+  amount?: number;
+}
+
+export interface ChartsData {
+  daily: DailyPoint[];
+  funnel: FunnelPoint[];
+  sources_pie: PiePoint[];
+  expense_categories: PiePoint[];
+  revenue_by_service: { name: string; revenue: number; count: number }[];
+}
+
+export interface Problem {
+  severity: "error" | "warning" | "critical";
+  message: string;
+  link: string | null;
+}
+
+export interface KpiMetric {
+  key: string;
+  label: string;
+  unit: string;
+  plan: number;
+  fact: number;
+  pct: number | null;
+  higher_is_better: boolean;
+}
+
+export interface KpiPlanFact {
+  year: number;
+  month: number;
+  plan_id: number | null;
+  metrics: KpiMetric[];
+}
+
+export interface MonthlyPlan {
+  id: number;
+  year: number;
+  month: number;
+  plan_revenue: number;
+  plan_leads: number;
+  plan_meetings: number;
+  plan_sales: number;
+  plan_cpl: number;
+  plan_cac: number;
+  plan_expenses: number;
+}
+
+
+export interface ApiKey {
+  id: number;
+  name: string;
+  key_prefix: string;
+  last_used_at: string | null;
+  created_at: string;
+  revoked: boolean;
+}
+
+export interface ApiKeyCreated extends ApiKey {
+  plain_key: string;
 }

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin
 from app.core.security import hash_password
-from app.models import User, Server, ServerStatus, Department, Role
+from app.models import User, Project, ProjectStatus, Department, Role
 from app.schemas import UserOut, UserCreate, UserUpdate, UserWithStats
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -55,13 +55,13 @@ def _stats(db: Session, user: User) -> UserWithStats:
             User.position == "Промпт-инженер", User.is_active == True
         ).all()
         ids = [p.id for p in prompters]
-        servers = db.query(Server).filter(Server.owner_id.in_(ids)).all() if ids else []
+        projects = db.query(Project).filter(Project.owner_id.in_(ids)).all() if ids else []
     else:
-        servers = db.query(Server).filter(Server.owner_id == user.id).all()
+        projects = db.query(Project).filter(Project.owner_id == user.id).all()
 
-    base.total_bots = len(servers)
-    base.new_bots = sum(1 for s in servers if s.status == ServerStatus.new)
-    base.support_bots = sum(1 for s in servers if s.status == ServerStatus.support)
+    base.total_bots = len(projects)
+    base.new_bots = sum(1 for s in projects if s.status == ProjectStatus.new)
+    base.support_bots = sum(1 for s in projects if s.status == ProjectStatus.support)
     return base
 
 
@@ -173,12 +173,12 @@ def reassign_bots(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """Reassign all bots from one user to another."""
+    """Reassign all projects from one user to another."""
     new_owner = db.get(User, new_owner_id)
     if not new_owner:
         raise HTTPException(404, "Новый ответственный не найден")
-    count = db.query(Server).filter(Server.owner_id == user_id).update(
-        {Server.owner_id: new_owner_id}
+    count = db.query(Project).filter(Project.owner_id == user_id).update(
+        {Project.owner_id: new_owner_id}
     )
     db.commit()
     return {"reassigned": count, "to": new_owner.name}
@@ -186,5 +186,5 @@ def reassign_bots(
 
 @router.get("/{user_id}/bots-count")
 def user_bots_count(user_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    count = db.query(Server).filter(Server.owner_id == user_id).count()
+    count = db.query(Project).filter(Project.owner_id == user_id).count()
     return {"count": count}

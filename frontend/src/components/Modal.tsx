@@ -81,6 +81,10 @@ export function Modal({
           outline: none; transition: border-color 0.15s;
         }
         .field-input:focus, .field-select:focus { border-color: var(--primary); }
+        @media (max-width: 768px) {
+          .modal-overlay { padding: 0; align-items: flex-end; }
+          .modal { border-radius: 16px 16px 0 0; max-height: 92vh; width: 100% !important; }
+        }
       `}</style>
     </div>
   );
